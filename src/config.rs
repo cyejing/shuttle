@@ -3,9 +3,10 @@ use std::fs::File;
 use std::io;
 use std::io::{BufReader};
 
-use rustls_pemfile::{certs, rsa_private_keys};
 use serde::{Deserialize, Serialize};
 use tokio_rustls::rustls::{Certificate, PrivateKey};
+use rustls_pemfile::{certs, rsa_private_keys};
+
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -50,7 +51,7 @@ impl ServerConfig {
                 addr.key_vec = load_keys(addr.key.as_ref().unwrap()).unwrap();
             }
         }
-        return sc;
+        sc
     }
 }
 
@@ -70,8 +71,6 @@ fn load_keys(path: &String) -> io::Result<Vec<PrivateKey>> {
 
 #[cfg(test)]
 mod tests {
-    use serde::{Deserialize, Serialize};
-
     use crate::config::ServerConfig;
 
     #[test]
