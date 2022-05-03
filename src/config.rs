@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn test_load_config() {
-        let sc = ServerConfig::load(String::from("res/shuttles.yaml"));
+        let sc = ServerConfig::load(String::from("examples/shuttles.yaml"));
         println!("{:?}", sc);
     }
 }
