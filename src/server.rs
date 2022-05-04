@@ -17,7 +17,7 @@ impl TlsServer {
         }
     }
 
-    pub async fn start(self) {
+    pub async fn start(self) -> crate::Result<()>{
         let addr = &self.addr.addr;
         let certs = self.addr.cert_vec;
         let mut keys = self.addr.key_vec;

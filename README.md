@@ -53,22 +53,22 @@ Enjoy
 #example/shuttles.yaml
 addrs:
   - addr: 127.0.0.1:4880
-wormhole:
+rathole:
   passwords:
     - 58JCEmvcBkRAk1XkK1iH
 ```
 #### Start Client
-``./shuttlec -c example/shuttlec-wormhole.yaml``
+``./shuttlec -c example/shuttlec-rathole.yaml``
 
 配置参数
 ```yaml
-runType: wormhole
+runType: rathole
 name: unique-name
 sslEnable: false
 remoteAddr: 127.0.0.1:4880
 password: 58JCEmvcBkRAk1XkK1iH
 
-ships:
+rats:
   - name: test
     remoteAddr: 127.0.0.1:4022
     localAddr: 127.0.0.1:22

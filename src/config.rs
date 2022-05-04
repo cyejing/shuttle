@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
-use std::io::{BufReader};
+use std::io::BufReader;
+use crypto::digest::Digest;
+use crypto::sha2::Sha224;
 
+use rustls_pemfile::{certs, rsa_private_keys};
 use serde::{Deserialize, Serialize};
 use tokio_rustls::rustls::{Certificate, PrivateKey};
-use rustls_pemfile::{certs, rsa_private_keys};
-
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -14,7 +15,23 @@ pub struct ServerConfig {
     #[serde(default)]
     pub logfile: String,
     pub trojan: Trojan,
-    pub wormhole: Wormhole,
+    pub rathole: RatHole,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct ClientConfig {
+    pub run_type: String,
+    pub name: String,
+    pub remote_addr: String,
+    pub password: String,
+    #[serde(skip)]
+    pub hash: String,
+    #[serde(default)]
+    pub sock_addr: String,
+    #[serde(default)]
+    pub ssl_enable: bool,
+    #[serde(default)]
+    pub logfile: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -29,7 +46,7 @@ pub struct Addr {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct Wormhole {
+pub struct RatHole {
     passwords: Vec<String>,
     #[serde(skip)]
     password_hash: HashMap<String, String>,
@@ -55,6 +72,28 @@ impl ServerConfig {
     }
 }
 
+impl ClientConfig {
+    pub fn load(file: String) -> ClientConfig {
+        let mut cc: ClientConfig = serde_yaml::from_reader(File::open(file).unwrap()).unwrap();
+        cc.hash = sha224(&cc.password);
+        cc
+    }
+}
+
+fn sha224(password: &String) -> String {
+    let mut encoder = Sha224::new();
+    encoder.reset();
+    encoder.input(password.as_bytes());
+    let result = encoder.result_str();
+    log::info!(
+            "sha224({}) = {}, length = {}",
+            password,
+            result,
+            result.len()
+        );
+    result
+}
+
 
 fn load_certs(path: &String) -> io::Result<Vec<Certificate>> {
     certs(&mut BufReader::new(File::open(path)?))
@@ -77,5 +116,9 @@ mod tests {
     fn test_load_config() {
         let sc = ServerConfig::load(String::from("examples/shuttles.yaml"));
         println!("{:?}", sc);
+    }
+
+    fn test_sha224() {
+
     }
 }
