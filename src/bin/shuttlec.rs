@@ -12,6 +12,6 @@ async fn main() -> shuttle::Result<()> {
 
     let dial = Arc::new(TrojanDial::new(cc.remote_addr.clone(),
                                         cc.hash.clone(),
-                                        cc.ssl_enable.clone()));
+                                        cc.ssl_enable));
     Socks::new(cc, dial).start().await
 }

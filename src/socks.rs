@@ -94,7 +94,7 @@ impl SocksStream {
         let methods = read_exact!(self.ts, vec![0u8; methods_len as usize])?;
         debug!("Methods supported sent by the client: {:?}", &methods);
 
-        self.ts.write(&[socks_consts::SOCKS5_VERSION, socks_consts::SOCKS5_AUTH_METHOD_NONE]).await?;
+        self.ts.write_all(&[socks_consts::SOCKS5_VERSION, socks_consts::SOCKS5_AUTH_METHOD_NONE]).await?;
         Ok(())
     }
 
@@ -129,14 +129,14 @@ impl SocksStream {
             "Reply [buf={buf:?}]",
              buf = buf,
         );
-        self.ts.write(buf.as_ref()).await?;
+        self.ts.write_all(buf.as_ref()).await?;
         Ok(())
     }
 }
 
 pub enum DialStream {
-    TCP(TcpStream),
-    TLS(TlsStream<TcpStream>),
+    TCP(Box<TcpStream>),
+    TLS(Box<TlsStream<TcpStream>>),
 }
 
 #[async_trait]
@@ -147,9 +147,13 @@ pub trait DialRemote: Send + Sync {
 pub struct SocksDial {}
 
 impl SocksDial {
-    pub fn new() -> SocksDial {
-        SocksDial{
-        }
+    pub fn new() -> Self {
+        SocksDial{}
+    }
+}
+impl Default for SocksDial{
+    fn default() -> Self {
+        SocksDial::new()
     }
 }
 
@@ -158,7 +162,7 @@ impl DialRemote for SocksDial {
     async fn dial(&self, ba: ByteAddr) -> crate::Result<DialStream> {
         let addr_str = ba.to_addr_str().await?;
         let tts = TcpStream::connect(addr_str).await?;
-        Ok(DialStream::TCP(tts))
+        Ok(DialStream::TCP(Box::new(tts)))
     }
 }
 
@@ -172,9 +176,9 @@ pub struct TrojanDial {
 impl TrojanDial {
     pub fn new(remote: String, hash: String, ssl_enable: bool) -> TrojanDial {
         let domain = remote.clone();
-        let domain = domain.split(":")
+        let domain = domain.split(':')
             .next()
-            .expect(format!("domain parse error : {}", remote).as_str());
+            .unwrap_or_else(|| panic!("domain parse error : {}", remote));
         debug!("Parse domain is : {}",domain);
         TrojanDial {
             remote,
@@ -199,11 +203,11 @@ impl DialRemote for TrojanDial {
         if self.ssl_enable {
             let server_name = make_server_name(self.domain.as_str())?;
             let mut ssl_tts = make_tls_connector().connect(server_name, tts).await?;
-            ssl_tts.write(buf.as_slice()).await?;
-            Ok(TLS(ssl_tts))
+            ssl_tts.write_all(buf.as_slice()).await?;
+            Ok(TLS(Box::new(ssl_tts)))
         } else {
-            tts.write(buf.as_slice()).await?;
-            Ok(TCP(tts))
+            tts.write_all(buf.as_slice()).await?;
+            Ok(TCP(Box::new(tts)))
         }
     }
 }

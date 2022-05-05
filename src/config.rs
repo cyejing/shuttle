@@ -134,7 +134,4 @@ mod tests {
         println!("{:?}", sc);
     }
 
-    fn test_sha224() {
-
-    }
 }

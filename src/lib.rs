@@ -36,8 +36,7 @@ pub mod tls{
             .with_single_cert(certs, key)
             .expect("bad certificates/private key");
 
-        let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
-        acceptor
+    tokio_rustls::TlsAcceptor::from(Arc::new(config))
     }
 
     pub fn make_tls_connector() -> tokio_rustls::TlsConnector {
@@ -55,8 +54,7 @@ pub mod tls{
             .with_safe_defaults()
             .with_root_certificates(root_cert_store)
             .with_no_client_auth();
-        let connector =  tokio_rustls::TlsConnector::from(Arc::new(config));
-        connector
+        tokio_rustls::TlsConnector::from(Arc::new(config))
     }
 
     pub fn make_server_name(domain: &str) -> crate::Result<rustls::ServerName>{
