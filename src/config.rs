@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::fs::{File};
 use std::io::{BufReader};
+use std::sync::Arc;
 use crypto::digest::Digest;
 use crypto::sha2::Sha224;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::{Mutex, RwLock};
 use tokio_rustls::rustls;
 use tokio_rustls::rustls::{Certificate, PrivateKey};
 
@@ -33,25 +35,43 @@ pub struct ClientConfig {
     pub logfile: String,
 }
 
+pub struct ServerStore {
+    pub req_map: Arc<RwLock<HashMap<String, String>>>,
+    pub trojan: Trojan,
+    pub rathole: RatHole,
+}
+
+impl From<Arc<ServerConfig>> for ServerStore {
+    fn from(sc: Arc<ServerConfig>) -> Self {
+        ServerStore{
+            req_map: Arc::new(RwLock::new(HashMap::new())),
+            trojan: sc.trojan.clone(),
+            rathole: sc.rathole.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Addr {
     pub addr: String,
+    pub cert: Option<String>,
+    pub key: Option<String>,
+    #[serde(skip)]
+    pub ssl_enable: bool,
     #[serde(skip)]
     pub cert_loaded: Vec<Certificate>,
-    pub cert: Option<String>,
     #[serde(skip)]
     pub key_loaded: Vec<PrivateKey>,
-    pub key: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RatHole {
     passwords: Vec<String>,
     #[serde(skip)]
     password_hash: HashMap<String, String>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Trojan {
     passwords: Vec<String>,
     #[serde(skip)]
@@ -63,9 +83,16 @@ impl ServerConfig {
         let mut sc: ServerConfig = serde_yaml::from_reader(File::open(file).unwrap()).unwrap();
         for mut addr in &mut sc.addrs {
             if addr.cert.is_some() && addr.key.is_some() {
+                addr.ssl_enable = true;
                 addr.cert_loaded = load_certs(addr.cert.as_ref().unwrap());
                 addr.key_loaded = vec![load_private_key(addr.key.as_ref().unwrap())];
             }
+        }
+        for password in sc.trojan.passwords {
+            sc.trojan.password_hash.insert(sha224(&password),password)
+        }
+        for password in sc.rathole.passwords {
+            sc.rathole.password_hash.insert(sha224(&password), password);
         }
         sc
     }
