@@ -1,12 +1,11 @@
 use std::collections::HashMap;
-use std::fs::File;
-use std::io;
-use std::io::BufReader;
+use std::fs::{File};
+use std::io::{BufReader};
 use crypto::digest::Digest;
 use crypto::sha2::Sha224;
 
-use rustls_pemfile::{certs, rsa_private_keys};
 use serde::{Deserialize, Serialize};
+use tokio_rustls::rustls;
 use tokio_rustls::rustls::{Certificate, PrivateKey};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -38,10 +37,10 @@ pub struct ClientConfig {
 pub struct Addr {
     pub addr: String,
     #[serde(skip)]
-    pub cert_vec: Vec<Certificate>,
+    pub cert_loaded: Vec<Certificate>,
     pub cert: Option<String>,
     #[serde(skip)]
-    pub key_vec: Vec<PrivateKey>,
+    pub key_loaded: Vec<PrivateKey>,
     pub key: Option<String>,
 }
 
@@ -64,8 +63,8 @@ impl ServerConfig {
         let mut sc: ServerConfig = serde_yaml::from_reader(File::open(file).unwrap()).unwrap();
         for mut addr in &mut sc.addrs {
             if addr.cert.is_some() && addr.key.is_some() {
-                addr.cert_vec = load_certs(addr.cert.as_ref().unwrap()).unwrap();
-                addr.key_vec = load_keys(addr.key.as_ref().unwrap()).unwrap();
+                addr.cert_loaded = load_certs(addr.cert.as_ref().unwrap());
+                addr.key_loaded = vec![load_private_key(addr.key.as_ref().unwrap())];
             }
         }
         sc
@@ -95,16 +94,33 @@ fn sha224(password: &String) -> String {
 }
 
 
-fn load_certs(path: &String) -> io::Result<Vec<Certificate>> {
-    certs(&mut BufReader::new(File::open(path)?))
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid cert"))
-        .map(|mut certs| certs.drain(..).map(Certificate).collect())
+pub fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
+    let certfile = File::open(filename).expect("cannot open certificate file");
+    let mut reader = BufReader::new(certfile);
+    rustls_pemfile::certs(&mut reader)
+        .unwrap()
+        .iter()
+        .map(|v| rustls::Certificate(v.clone()))
+        .collect()
 }
 
-fn load_keys(path: &String) -> io::Result<Vec<PrivateKey>> {
-    rsa_private_keys(&mut BufReader::new(File::open(path)?))
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))
-        .map(|mut keys| keys.drain(..).map(PrivateKey).collect())
+pub fn load_private_key(filename: &str) -> rustls::PrivateKey {
+    let keyfile = File::open(filename).expect("cannot open private key file");
+    let mut reader = BufReader::new(keyfile);
+
+    loop {
+        match rustls_pemfile::read_one(&mut reader).expect("cannot parse private key .pem file") {
+            Some(rustls_pemfile::Item::RSAKey(key)) => return rustls::PrivateKey(key),
+            Some(rustls_pemfile::Item::PKCS8Key(key)) => return rustls::PrivateKey(key),
+            None => break,
+            _ => {}
+        }
+    }
+
+    panic!(
+        "no keys found in {:?} (encrypted keys not supported)",
+        filename
+    );
 }
 
 

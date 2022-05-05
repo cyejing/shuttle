@@ -1,13 +1,14 @@
-use std::io;
 use std::sync::Arc;
+
+use log::{debug, error};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
-use tokio_rustls::rustls;
-use tokio_rustls::TlsAcceptor;
+
 use crate::config::Addr;
+use crate::tls::make_tls_acceptor;
 
 pub struct TlsServer {
-    pub addr: Addr
+    pub addr: Addr,
 }
 
 impl TlsServer {
@@ -17,43 +18,46 @@ impl TlsServer {
         }
     }
 
-    pub async fn start(self) -> crate::Result<()>{
+    pub async fn start(self) -> crate::Result<()> {
         let addr = &self.addr.addr;
-        let certs = self.addr.cert_vec;
-        let mut keys = self.addr.key_vec;
+        let cert_loaded = self.addr.cert_loaded;
+        let mut key_loaded = self.addr.key_loaded;
 
-        let config = rustls::ServerConfig::builder()
-            .with_safe_defaults()
-            .with_no_client_auth()
-            .with_single_cert(certs, keys.remove(0))
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))
-            .unwrap();
-        let acceptor = TlsAcceptor::from(Arc::new(config));
+        let acceptor = Arc::new(make_tls_acceptor(cert_loaded, key_loaded.remove(0)));
 
-        let listener = TcpListener::bind(addr).await.unwrap();
+        let listener = TcpListener::bind(addr).await?;
 
         loop {
-            let (ts, sd) = listener.accept().await.expect("accept conn err");
-            let acceptor = acceptor.clone();
-
-            let handle = tokio::spawn(async move {
-                let mut stream = acceptor.accept(ts).await?;
-                println!("read tls");
-                stream.write_all(
-                    &b"HTTP/1.0 200 ok\r\n\
-                    Connection: keep-alive\r\n\
-                    Content-Type: text/plain; charset=utf-8\r\n\
-                    Content-length: 12\r\n\
-                    \r\n\
-                    Hello world!"[..],
-                ).await?;
-                println!("Hello: {}", sd);
-                Ok(()) as io::Result<()>
-            });
-
-            let result = handle.await.unwrap();
-            println!("{:?}",result)
-
+            let acc = listener.accept().await;
+            match acc {
+                Ok((ts, sd)) => {
+                    let acceptor = acceptor.clone();
+                    tokio::spawn(async move {
+                        let acc = acceptor.accept(ts).await;
+                        match acc {
+                            Ok(mut tls_ts) => {
+                                debug!("accept new connect!");
+                                // let mut stream = ts;
+                                tls_ts.write_all(
+                                    &b"HTTP/1.0 200 ok\r\n\
+                                    Connection: keep-alive\r\n\
+                                    Content-Type: text/plain; charset=utf-8\r\n\
+                                    Content-length: 12\r\n\
+                                    \r\n\
+                                    Hello world!"[..],
+                                ).await.unwrap();
+                                println!("Hello: {}", sd);
+                            }
+                            Err(e) => {
+                                error!("Accept connect err : {}",e)
+                            }
+                        }
+                    });
+                }
+                Err(e) => {
+                    error!("accept connection err : {}",e)
+                }
+            }
         }
     }
 }

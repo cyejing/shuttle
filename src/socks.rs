@@ -1,25 +1,29 @@
+use std::fmt::{Display, Formatter};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use log::{debug, error, info};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, copy_bidirectional};
 use tokio::net::{lookup_host, TcpListener, TcpStream};
-use tokio_rustls::{rustls, TlsConnector};
 use tokio_rustls::client::TlsStream;
-use tokio_rustls::rustls::OwnedTrustAnchor;
 
 use crate::common::{consts, socks_consts};
 use crate::config::ClientConfig;
 use crate::read_exact;
+use crate::socks::DialStream::{TCP, TLS};
+use crate::tls::{make_server_name, make_tls_connector};
 
 pub struct Socks {
     pub cc: ClientConfig,
+    pub dial: Arc<dyn DialRemote>,
 }
 
 impl Socks {
-    pub fn new(cc: ClientConfig) -> Socks {
+    pub fn new(cc: ClientConfig,dial: Arc<dyn DialRemote>) -> Socks {
         Socks {
-          cc
+            cc,
+            dial
         }
     }
 
@@ -29,18 +33,16 @@ impl Socks {
 
         loop {
             let res_acc = listener.accept().await;
-            let remote = self.cc.remote_addr.clone();
-            let hash = self.cc.hash.clone();
+            let dial = self.dial.clone();
             match res_acc {
                 Ok(acc) => {
                     tokio::spawn(async move {
-                        if let Err(e) =
-                        SocksStream::new(acc, remote, hash).handle().await {
-                            error!("socks stream handle err {:?}",e);
+                        if let Err(e) = SocksStream::new(acc).handle(dial).await {
+                            error!("socks stream handle err :{:?}",e);
                         };
                     });
                 }
-                Err(e) => error!("accept err {}",e),
+                Err(e) => error!("accept err :{:?}",e),
             };
         }
     }
@@ -48,36 +50,33 @@ impl Socks {
 
 pub struct SocksStream {
     ts: TcpStream,
+    #[allow(dead_code)]
     sd: SocketAddr,
-    remote: String,
-    hash: String,
 }
 
 impl SocksStream {
-    pub fn new((ts, sd): (TcpStream, SocketAddr),
-               remote: String,hash: String) -> SocksStream {
+    pub fn new((ts, sd): (TcpStream, SocketAddr)) -> SocksStream {
         SocksStream {
             ts,
             sd,
-            remote,
-            hash,
         }
     }
 
-    pub async fn handle(&mut self) -> crate::Result<()> {
-        info!("Socks connection {}", self.sd);
+    pub async fn handle(&mut self, dr: Arc<dyn DialRemote>) -> crate::Result<()> {
         self.handshake().await?;
 
         let addr = self.read_request().await?;
 
-        // let mut rts = SocksStream::connect_remote(addr).await?;
-
-        let mut rts =
-            SocksStream::send_trojan(&self.remote, &self.hash, addr).await?;
-
-        self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED).await?;
-
-        copy_bidirectional(&mut rts, &mut self.ts).await?;
+        match dr.dial(addr).await? {
+            TCP(mut rts) => {
+                self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED).await?;
+                copy_bidirectional(&mut rts, &mut self.ts).await?;
+            }
+            TLS(mut rts) => {
+                self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED).await?;
+                copy_bidirectional(&mut rts, &mut self.ts).await?;
+            }
+        };
 
         Ok(())
     }
@@ -93,7 +92,7 @@ impl SocksStream {
             return Err(String::from("unknown socks5 version").into());
         }
         let methods = read_exact!(self.ts, vec![0u8; methods_len as usize])?;
-        debug!("methods supported sent by the client: {:?}", &methods);
+        debug!("Methods supported sent by the client: {:?}", &methods);
 
         self.ts.write(&[socks_consts::SOCKS5_VERSION, socks_consts::SOCKS5_AUTH_METHOD_NONE]).await?;
         Ok(())
@@ -115,8 +114,8 @@ impl SocksStream {
 
         let addr = ByteAddr::read_addr(&mut self.ts, cmd, address_type).await?;
 
-        debug!(
-            "Read address: [addr: {addr:?}]",
+        info!(
+            "requested connection to: {addr}",
             addr = addr,
         );
 
@@ -133,51 +132,79 @@ impl SocksStream {
         self.ts.write(buf.as_ref()).await?;
         Ok(())
     }
+}
 
-    #[allow(dead_code)]
-    async fn connect_remote(ba: ByteAddr) -> crate::Result<TcpStream> {
+pub enum DialStream {
+    TCP(TcpStream),
+    TLS(TlsStream<TcpStream>),
+}
+
+#[async_trait]
+pub trait DialRemote: Send + Sync {
+    async fn dial(&self, ba: ByteAddr) -> crate::Result<DialStream>;
+}
+
+pub struct SocksDial {}
+
+impl SocksDial {
+    pub fn new() -> SocksDial {
+        SocksDial{
+        }
+    }
+}
+
+#[async_trait]
+impl DialRemote for SocksDial {
+    async fn dial(&self, ba: ByteAddr) -> crate::Result<DialStream> {
         let addr_str = ba.to_addr_str().await?;
         let tts = TcpStream::connect(addr_str).await?;
-        Ok(tts)
+        Ok(DialStream::TCP(tts))
     }
+}
+
+pub struct TrojanDial {
+    remote: String,
+    hash: String,
+    domain: String,
+    ssl_enable: bool,
+}
+
+impl TrojanDial {
+    pub fn new(remote: String, hash: String, ssl_enable: bool) -> TrojanDial {
+        let domain = remote.clone();
+        let domain = domain.split(":")
+            .next()
+            .expect(format!("domain parse error : {}", remote).as_str());
+        debug!("Parse domain is : {}",domain);
+        TrojanDial {
+            remote,
+            hash,
+            domain: String::from(domain),
+            ssl_enable,
+        }
+    }
+}
 
 
-    async fn send_trojan(remote: &String, hash: &String, ba: ByteAddr) -> crate::Result<TlsStream<TcpStream>> {
-        let mut tts = TcpStream::connect(remote).await?;
-        info!("send trojan remote={}",remote);
-
-        let mut root_cert_store = rustls::RootCertStore::empty();
-        root_cert_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(
-            |ta| {
-                OwnedTrustAnchor::from_subject_spki_name_constraints(
-                    ta.subject,
-                    ta.spki,
-                    ta.name_constraints,
-                )
-            },
-        ));
-        let config = tokio_rustls::rustls::client::ClientConfig::builder()
-            .with_safe_default_cipher_suites()
-            .with_safe_default_kx_groups()
-            .with_safe_default_protocol_versions()
-            .unwrap()
-            .with_root_certificates(root_cert_store)
-            .with_no_client_auth();
-
-        let connector = TlsConnector::from(Arc::new(config));
-        let server_name = rustls::ServerName::try_from("mini.cyejing.cn")?;
-        info!("{:?}",server_name);
-        let mut tls_tts = connector.connect(server_name, tts).await?;
-
+#[async_trait]
+impl DialRemote for TrojanDial {
+    async fn dial(&self, ba: ByteAddr) -> crate::Result<DialStream> {
+        let mut tts = TcpStream::connect(&self.remote).await?;
         let mut buf: Vec<u8> = vec![];
-        buf.extend_from_slice(hash.as_bytes());
+        buf.extend_from_slice(self.hash.as_bytes());
         buf.extend_from_slice(&consts::CRLF);
         buf.extend_from_slice(ba.as_bytes().as_slice());
         buf.extend_from_slice(&consts::CRLF);
 
-        tls_tts.write(buf.as_slice()).await?;
-
-        Ok(tls_tts)
+        if self.ssl_enable {
+            let server_name = make_server_name(self.domain.as_str())?;
+            let mut ssl_tts = make_tls_connector().connect(server_name, tts).await?;
+            ssl_tts.write(buf.as_slice()).await?;
+            Ok(TLS(ssl_tts))
+        } else {
+            tts.write(buf.as_slice()).await?;
+            Ok(TCP(tts))
+        }
     }
 }
 
@@ -187,6 +214,25 @@ pub enum ByteAddr {
     V4(u8, u8, [u8; 4], [u8; 2]),
     V6(u8, u8, [u8; 16], [u8; 2]),
     Domain(u8, u8, Vec<u8>, [u8; 2]), // Vec<[u8]> or Box<[u8]> or String ?
+}
+
+impl Display for ByteAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ByteAddr::V4(cmd, atyp, ip, port) => {
+                let cov_port = (port[0] as u16) << 8 | port[1] as u16;
+                write!(f, "[{},{}]:{:?}:{}", cmd, atyp, ip, cov_port)
+            }
+            ByteAddr::V6(cmd, atyp, ip, port) => {
+                let cov_port = (port[0] as u16) << 8 | port[1] as u16;
+                write!(f, "[{},{}]:{:?}:{}", cmd, atyp, ip, cov_port)
+            }
+            ByteAddr::Domain(cmd, atyp, domain, port) => {
+                let cov_port = (port[0] as u16) << 8 | port[1] as u16;
+                write!(f, "[{},{}]:{}:{}", cmd, atyp, String::from_utf8_lossy(domain), cov_port)
+            }
+        }
+    }
 }
 
 impl ByteAddr {
@@ -215,9 +261,7 @@ impl ByteAddr {
             }
         }
     }
-}
 
-impl ByteAddr {
     pub(crate) fn as_bytes(&self) -> Vec<u8> {
         match self {
             ByteAddr::V4(cmd, atyp, ip, port) => {
@@ -226,21 +270,20 @@ impl ByteAddr {
                 buf.extend_from_slice(port);
                 debug!("byte addr as bytes:{:?}",buf);
                 buf
-            },
+            }
             ByteAddr::V6(cmd, atyp, ip, port) => {
                 let mut buf = vec![*cmd, *atyp];
                 buf.extend_from_slice(ip);
                 buf.extend_from_slice(port);
                 debug!("byte addr as bytes:{:?}",buf);
                 buf
-            },
-            ByteAddr::Domain(cmd,atyp,domain,port) => {
-                debug!("byte addr domain:{}",String::from_utf8_lossy(domain));
+            }
+            ByteAddr::Domain(cmd, atyp, domain, port) => {
                 let mut buf = vec![*cmd, *atyp];
                 buf.push(domain.len() as u8);
                 buf.extend_from_slice(domain.as_slice());
                 buf.extend_from_slice(port);
-                debug!("byte addr as bytes:{:?}",buf);
+                debug!("byte addr as bytes:{:?} , domain:{}",buf,String::from_utf8_lossy(domain));
                 buf
             }
         }
@@ -270,63 +313,12 @@ impl ByteAddr {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::net::ToSocketAddrs;
-    use std::sync::Arc;
-    use log::info;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpStream;
-    use tokio_rustls::{rustls, TlsConnector};
-    use tokio_rustls::rustls::OwnedTrustAnchor;
-
     use crate::socks::ByteAddr;
 
     #[test]
     fn test_byte_addr() {
         let byte_addr = ByteAddr::V4(0x01, 0x02, [0x01, 0x01, 0x01, 0x01], [0x01, 0x01]);
         let bs = byte_addr.as_bytes();
-        println!("{:?}", bs);
         assert_eq!(bs.as_slice(), [1, 2, 1, 1, 1, 1, 1, 1]);
-    }
-
-    #[test]
-    fn test_stream() {
-        let mut rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            let remote = "mini.cyejing.cn:4843";
-            let mut tts = TcpStream::connect(remote).await.unwrap();
-            info!("send trojan remote={}",remote);
-
-            let mut root_cert_store = rustls::RootCertStore::empty();
-            root_cert_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(
-                |ta| {
-                    OwnedTrustAnchor::from_subject_spki_name_constraints(
-                        ta.subject,
-                        ta.spki,
-                        ta.name_constraints,
-                    )
-                },
-            ));
-            let config = tokio_rustls::rustls::client::ClientConfig::builder()
-                .with_safe_default_cipher_suites()
-                .with_safe_default_kx_groups()
-                .with_safe_default_protocol_versions()
-                .unwrap()
-                .with_root_certificates(root_cert_store)
-                .with_no_client_auth();
-
-            let connector = TlsConnector::from(Arc::new(config));
-            let server_name = rustls::ServerName::try_from("mini.cyejing.cn").unwrap();
-            info!("{:?}",server_name);
-            let mut tls_tts = connector.connect(server_name, tts).await.unwrap();
-
-            tls_tts.write_all(&b"GET / HTTP/1.1\r\n\
-            Connection: Close\r\n
-            Accept: */*\r\n"[..]).await.unwrap();
-
-            let mut res = String::new();
-            tls_tts.read_to_string(&mut res).await.unwrap();
-            println!("{}",res)
-        });
     }
 }

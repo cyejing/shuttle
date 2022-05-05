@@ -1,18 +1,17 @@
-use tracing::Subscriber;
-use tracing_subscriber::fmt;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use shuttle::config::ClientConfig;
+use std::sync::Arc;
 
-use shuttle::socks::Socks;
+use shuttle::config::ClientConfig;
+use shuttle::logs::init_log;
+use shuttle::socks::{Socks, TrojanDial};
 
 #[tokio::main]
 async fn main() -> shuttle::Result<()> {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .init();
+    init_log();
 
     let cc = ClientConfig::load(String::from("examples/shuttlec.yaml"));
 
-    Socks::new(cc).start().await
+    let dial = Arc::new(TrojanDial::new(cc.remote_addr.clone(),
+                                        cc.hash.clone(),
+                                        cc.ssl_enable.clone()));
+    Socks::new(cc, dial).start().await
 }
