@@ -1,12 +1,13 @@
 use std::collections::HashMap;
-use std::fs::{File};
-use std::io::{BufReader};
+use std::fs::File;
+use std::io::BufReader;
+use std::rc::Rc;
 use std::sync::Arc;
+
 use crypto::digest::Digest;
 use crypto::sha2::Sha224;
-
 use serde::{Deserialize, Serialize};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 use tokio_rustls::rustls;
 use tokio_rustls::rustls::{Certificate, PrivateKey};
 
@@ -33,22 +34,6 @@ pub struct ClientConfig {
     pub ssl_enable: bool,
     #[serde(default)]
     pub logfile: String,
-}
-
-pub struct ServerStore {
-    pub req_map: Arc<RwLock<HashMap<String, String>>>,
-    pub trojan: Trojan,
-    pub rathole: RatHole,
-}
-
-impl From<Arc<ServerConfig>> for ServerStore {
-    fn from(sc: Arc<ServerConfig>) -> Self {
-        ServerStore{
-            req_map: Arc::new(RwLock::new(HashMap::new())),
-            trojan: sc.trojan.clone(),
-            rathole: sc.rathole.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -78,6 +63,25 @@ pub struct Trojan {
     password_hash: HashMap<String, String>,
 }
 
+#[derive(Clone,Debug)]
+pub struct ServerStore {
+    pub req_map: Arc<RwLock<HashMap<String, String>>>,
+    pub trojan: Arc<Trojan>,
+    pub rathole: Arc<RatHole>,
+}
+
+impl From<Rc<ServerConfig>> for ServerStore {
+    fn from(sc: Rc<ServerConfig>) -> Self {
+        ServerStore{
+            req_map: Arc::new(RwLock::new(HashMap::new())),
+            trojan: Arc::new(sc.trojan.clone()),
+            rathole: Arc::new(sc.rathole.clone()),
+        }
+    }
+}
+
+
+
 impl ServerConfig {
     pub fn load(file: String) -> ServerConfig {
         let mut sc: ServerConfig = serde_yaml::from_reader(File::open(file).unwrap()).unwrap();
@@ -88,11 +92,11 @@ impl ServerConfig {
                 addr.key_loaded = vec![load_private_key(addr.key.as_ref().unwrap())];
             }
         }
-        for password in sc.trojan.passwords {
-            sc.trojan.password_hash.insert(sha224(&password),password)
+        for password in &sc.trojan.passwords {
+            sc.trojan.password_hash.insert(sha224(password),password.clone());
         }
-        for password in sc.rathole.passwords {
-            sc.rathole.password_hash.insert(sha224(&password), password);
+        for password in &sc.rathole.passwords {
+            sc.rathole.password_hash.insert(sha224(password), password.clone());
         }
         sc
     }
