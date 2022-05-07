@@ -120,8 +120,7 @@ impl ClientConfig {
 }
 
 fn open_config_file(file_op: Option<String>, default_paths: Vec<&str>) -> File {
-    if file_op.is_some() {
-        let file_path = file_op.unwrap();
+    if let Some(file_path) = file_op {
         File::open(&file_path)
             .unwrap_or_else(|e| panic!("open file [{}] failed {}", &file_path, e))
     } else {
