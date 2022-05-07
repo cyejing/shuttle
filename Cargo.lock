@@ -620,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "shuttle"
-version = "0.1.0"
+version = "0.0.5"
 dependencies = [
  "async-trait",
  "bytes",

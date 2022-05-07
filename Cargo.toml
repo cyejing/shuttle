@@ -1,6 +1,6 @@
 [package]
 name = "shuttle"
-version = "0.1.0"
+version = "0.0.6"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,7 +9,7 @@ edition = "2021"
 tokio = { version = "1.17.0", features = ["full"] }
 bytes = "1.1"
 
-log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
+log = { version = "0.4", features = ["release_max_level_debug", "max_level_trace"] }
 tracing = "0.1"
 tracing-subscriber = "0.2"
 tracing-appender = "0.2"
