@@ -3,8 +3,18 @@ name: ci-test-build
 on:
   push:
     branches: [ master ]
+    paths:
+      - "**/*.rs"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - ".github/workflows/ci-test-build.yml"
   pull_request:
     branches: [ master ]
+    paths:
+      - "**/*.rs"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - ".github/workflows/ci-test-build.yml"
 
 env:
   CARGO_TERM_COLOR: always
