@@ -2,7 +2,6 @@ name: release-build
 
 on:
   workflow_dispatch:
-
   push:
     tags:
       - "v*"
@@ -16,49 +15,61 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            name: shuttle-x86_64-unknown-linux-gnu.tar.gz
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            name: shuttle-x86_64-unknown-linux-musl.tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: shuttle-x86_64-unknown-linux-gnu.tgz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            name: shuttle-x86_64-unknown-linux-musl.tgz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            name: shuttle-aarch64-unknown-linux-musl.tgz
+          - os: ubuntu-latest
+            target: i686-unknown-linux-musl
+            name: shuttle-i686-unknown-linux-musl.tgz
+          - os: ubuntu-latest
+            target: arm-unknown-linux-musleabi
+            name: shuttle-arm-unknown-linux-musleabi.tgz
+          - os: ubuntu-latest
+            target: arm-unknown-linux-musleabihf
+            name: shuttle-arm-unknown-linux-musleabihf.tgz
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-musleabihf
+            name: shuttle-armv7-unknown-linux-musleabihf.tgz
+          - os: ubuntu-latest
+            target: mips-unknown-linux-musl
+            name: shuttle-mips-unknown-linux-musl.tgz
+          - os: ubuntu-latest
+            target: mips64-unknown-linux-gnuabi64
+            name: shuttle-mips64-unknown-linux-gnuabi64.tgz
+          - os: ubuntu-latest
+            target: mipsel-unknown-linux-gnu
+            name: shuttle-mipsel-unknown-linux-gnu.tgz
 
-          - target: i686-unknown-linux-musl
-            os: ubuntu-latest
-            name: shuttle-i686-unknown-linux-musl.tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-freebsd
+            name: shuttle-x86_64-unknown-freebsd.tgz
 
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-            name: shuttle-aarch64-unknown-linux-musl.tar.gz
-
-          - target: arm-unknown-linux-musleabihf
-            os: ubuntu-latest
-            name: shuttle-arm-unknown-linux-musleabihf.tar.gz
-
-          - target: x86_64-apple-darwin
-            os: macOS-11
-            name: shuttle-x86_64-apple-darwin.tar.gz
-
-          - target: aarch64-apple-darwin
-            os: macOS-11
-            name: shuttle-aarch64-apple-darwin.tar.gz
+          - os: macOS-11
+            target: x86_64-apple-darwin
+            name: shuttle-x86_64-apple-darwin.tgz
+          - os: macOS-11
+            target: aarch64-apple-darwin
+            name: shuttle-aarch64-apple-darwin.tgz
 
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             name: shuttle-x86_64-pc-windows-msvc.zip
-
           - target: i686-pc-windows-msvc
             os: windows-latest
             name: shuttle-i686-pc-windows-msvc.zip
-
           - target: aarch64-pc-windows-msvc
             os: windows-latest
             name: shuttle-aarch64-pc-windows-msvc.zip
 
-          - target: x86_64-unknown-freebsd
-            os: ubuntu-latest
-            name: shuttle-x86_64-unknown-freebsd.tar.gz
+
     runs-on: ${{ matrix.os }}
+    continue-on-error: true
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v3
@@ -78,6 +89,17 @@ jobs:
           args: --release --locked --target ${{ matrix.target }}
           use-cross: ${{ matrix.os == 'ubuntu-latest' }}
 
+      - name: Run UPX
+        # Upx may not support some platforms. Ignore the errors
+        continue-on-error: true
+        # Disable upx for mips. See https://github.com/upx/upx/issues/387
+        if: matrix.os == 'ubuntu-latest' && !contains(matrix.target, 'mips')
+        uses: crazy-max/ghaction-upx@v1
+        with:
+          version: v3.96
+          files: target/${{ matrix.target }}/release/${{ matrix.name }}
+          args: -q --best --lzma
+
       - name: Post Build | Prepare artifacts [Windows]
         if: matrix.os == 'windows-latest'
         run: |
@@ -87,7 +109,7 @@ jobs:
           strip shuttlec.exe
           7z a ../../../${{ matrix.name }} shuttles.exe shuttlec.exe examples/*
           cd -
-      - name: Post Build | Prepare artifacts [-nix]
+      - name: Post Build | Prepare artifacts [unix]
         if: matrix.os != 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
