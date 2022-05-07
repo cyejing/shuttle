@@ -294,7 +294,7 @@ impl ByteAddr {
     }
 
     pub async fn read_addr<T>(stream: &mut T, cmd: u8, atyp: u8) -> crate::Result<ByteAddr>
-        where T: AsyncRead + AsyncReadExt + Unpin {
+        where T: AsyncRead + Unpin {
         let addr = match atyp {
             socks_consts::SOCKS5_ADDR_TYPE_IPV4 => {
                 ByteAddr::V4(cmd, atyp, read_exact!(stream, [0u8; 4])?, read_exact!(stream, [0u8; 2])?)

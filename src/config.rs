@@ -51,16 +51,17 @@ pub struct Addr {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RatHole {
-    passwords: Vec<String>,
+    pub passwords: Vec<String>,
     #[serde(skip)]
-    password_hash: HashMap<String, String>,
+    pub password_hash: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Trojan {
-    passwords: Vec<String>,
+    pub local_addr: String,
+    pub passwords: Vec<String>,
     #[serde(skip)]
-    password_hash: HashMap<String, String>,
+    pub password_hash: HashMap<String, String>,
 }
 
 #[derive(Clone,Debug)]
@@ -115,7 +116,7 @@ fn sha224(password: &String) -> String {
     encoder.reset();
     encoder.input(password.as_bytes());
     let result = encoder.result_str();
-    log::info!(
+    log::debug!(
             "sha224({}) = {}, length = {}",
             password,
             result,

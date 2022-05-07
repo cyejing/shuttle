@@ -1,12 +1,10 @@
 use std::rc::Rc;
 
-use futures::future::join_all;
 use log::debug;
-use tokio::join;
 
 use shuttle::config::{ServerConfig, ServerStore};
 use shuttle::logs::init_log;
-use shuttle::server::{TcpServer, TlsServer};
+use shuttle::server::{start_tcp_server, start_tls_server};
 
 #[tokio::main]
 async fn main() {
@@ -18,12 +16,10 @@ async fn main() {
     let store = ServerStore::from(config.clone());
     debug!("{:?}",&config.addrs);
     for addr in &config.addrs {
-        let addr_b = addr.clone();
-        let store_b = store.clone();
         if addr.ssl_enable {
-            tokio::spawn(TlsServer::new(addr_b, store_b).start());
+            tokio::spawn(start_tls_server(addr.clone(), store.clone()));
         } else {
-            tokio::spawn(TcpServer::new(addr_b, store_b).start());
+            tokio::spawn(start_tcp_server(addr.addr.clone(), store.clone()));
         }
     }
 
