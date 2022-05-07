@@ -1,10 +1,13 @@
 use std::collections::HashMap;
-use std::fs::{File};
-use std::io::{BufReader};
+use std::fs::File;
+use std::io::BufReader;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use crypto::digest::Digest;
 use crypto::sha2::Sha224;
-
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 use tokio_rustls::rustls;
 use tokio_rustls::rustls::{Certificate, PrivateKey};
 
@@ -36,36 +39,65 @@ pub struct ClientConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Addr {
     pub addr: String,
+    pub cert: Option<String>,
+    pub key: Option<String>,
+    #[serde(skip)]
+    pub ssl_enable: bool,
     #[serde(skip)]
     pub cert_loaded: Vec<Certificate>,
-    pub cert: Option<String>,
     #[serde(skip)]
     pub key_loaded: Vec<PrivateKey>,
-    pub key: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RatHole {
-    passwords: Vec<String>,
+    pub passwords: Vec<String>,
     #[serde(skip)]
-    password_hash: HashMap<String, String>,
+    pub password_hash: HashMap<String, String>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Trojan {
-    passwords: Vec<String>,
+    pub local_addr: String,
+    pub passwords: Vec<String>,
     #[serde(skip)]
-    password_hash: HashMap<String, String>,
+    pub password_hash: HashMap<String, String>,
 }
+
+#[derive(Clone,Debug)]
+pub struct ServerStore {
+    pub req_map: Arc<RwLock<HashMap<String, String>>>,
+    pub trojan: Arc<Trojan>,
+    pub rathole: Arc<RatHole>,
+}
+
+impl From<Rc<ServerConfig>> for ServerStore {
+    fn from(sc: Rc<ServerConfig>) -> Self {
+        ServerStore{
+            req_map: Arc::new(RwLock::new(HashMap::new())),
+            trojan: Arc::new(sc.trojan.clone()),
+            rathole: Arc::new(sc.rathole.clone()),
+        }
+    }
+}
+
+
 
 impl ServerConfig {
     pub fn load(file: String) -> ServerConfig {
         let mut sc: ServerConfig = serde_yaml::from_reader(File::open(file).unwrap()).unwrap();
         for mut addr in &mut sc.addrs {
             if addr.cert.is_some() && addr.key.is_some() {
+                addr.ssl_enable = true;
                 addr.cert_loaded = load_certs(addr.cert.as_ref().unwrap());
                 addr.key_loaded = vec![load_private_key(addr.key.as_ref().unwrap())];
             }
+        }
+        for password in &sc.trojan.passwords {
+            sc.trojan.password_hash.insert(sha224(password),password.clone());
+        }
+        for password in &sc.rathole.passwords {
+            sc.rathole.password_hash.insert(sha224(password), password.clone());
         }
         sc
     }
@@ -84,7 +116,7 @@ fn sha224(password: &String) -> String {
     encoder.reset();
     encoder.input(password.as_bytes());
     let result = encoder.result_str();
-    log::info!(
+    log::debug!(
             "sha224({}) = {}, length = {}",
             password,
             result,

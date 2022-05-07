@@ -1,8 +1,11 @@
 addrs:
   - addr: 127.0.0.1:4843
+    key: examples/s.cyejing.cn_key.key
+    cert: examples/s.cyejing.cn_chain.crt
   - addr: 127.0.0.1:4880
-logFile: logs/shuttles.log
+logfile: logs/shuttles.log
 trojan:
+  local_addr: 127.0.0.1:8080
   passwords:
     - sQtfRnfhcNoZYZh1wY9u
 rathole:

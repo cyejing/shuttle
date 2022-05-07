@@ -1,63 +1,141 @@
-use std::sync::Arc;
+use std::net::SocketAddr;
 
-use log::{debug, error};
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
+use log::{debug, error, info};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 
-use crate::config::Addr;
+use crate::config::{Addr, ServerStore};
+use crate::read_exact;
+use crate::socks::ByteAddr;
 use crate::tls::make_tls_acceptor;
 
-pub struct TlsServer {
-    pub addr: Addr,
-}
-
-impl TlsServer {
-    pub fn new(addr: Addr) -> TlsServer {
-        TlsServer {
-            addr,
-        }
-    }
-
-    pub async fn start(self) -> crate::Result<()> {
-        let addr = &self.addr.addr;
-        let cert_loaded = self.addr.cert_loaded;
-        let mut key_loaded = self.addr.key_loaded;
-
-        let acceptor = Arc::new(make_tls_acceptor(cert_loaded, key_loaded.remove(0)));
-
-        let listener = TcpListener::bind(addr).await?;
-
-        loop {
-            let acc = listener.accept().await;
-            match acc {
-                Ok((ts, sd)) => {
-                    let acceptor = acceptor.clone();
-                    tokio::spawn(async move {
-                        let acc = acceptor.accept(ts).await;
-                        match acc {
-                            Ok(mut tls_ts) => {
-                                debug!("accept new connect!");
-                                // let mut stream = ts;
-                                tls_ts.write_all(
-                                    &b"HTTP/1.0 200 ok\r\n\
-                                    Connection: keep-alive\r\n\
-                                    Content-Type: text/plain; charset=utf-8\r\n\
-                                    Content-length: 12\r\n\
-                                    \r\n\
-                                    Hello world!"[..],
-                                ).await.unwrap();
-                                println!("Hello: {}", sd);
-                            }
-                            Err(e) => {
-                                error!("Accept connect err : {}",e)
-                            }
-                        }
-                    });
-                }
-                Err(e) => {
-                    error!("accept connection err : {}",e)
-                }
+pub async fn start_tcp_server(addr: String, store: ServerStore) {
+    let lis = TcpListener::bind(&addr).await.expect("bind port failed");
+    info!("Tcp Server listener addr : {}", &addr);
+    loop {
+        match lis.accept().await {
+            Ok((ts, _sd)) => {
+                let peer_addr = ts.peer_addr().expect("read peer addr failed");
+                let handler = ServerHandler::new(store.clone(), peer_addr);
+                tokio::spawn(handler.handle(ts));
+            }
+            Err(e) => {
+                error!("accept connection err,{}", e)
             }
         }
     }
 }
+
+pub async fn start_tls_server(addr: Addr, store: ServerStore) {
+    let addr_str = addr.addr;
+    let cert_loaded = addr.cert_loaded;
+    let mut key_loaded = addr.key_loaded;
+
+    let acceptor = make_tls_acceptor(cert_loaded, key_loaded.remove(0));
+
+    let lis = TcpListener::bind(&addr_str).await.expect("bind port failed");
+    info!("Tls Server listener addr : {}", &addr_str);
+    loop {
+        match lis.accept().await {
+            Ok((ts, _sd)) => {
+                let peer_addr = ts.peer_addr().expect("read peer addr failed");
+                let tls_acc = acceptor.clone();
+                match tls_acc.accept(ts).await {
+                    Ok(tls_ts) => {
+                        let handler = ServerHandler::new(store.clone(), peer_addr);
+                        tokio::spawn(handler.handle(tls_ts));
+                    }
+                    Err(e) => {
+                        error!("accept tls connection err,{}", e)
+                    }
+                }
+            }
+            Err(e) => {
+                error!("accept connection err,{}", e)
+            }
+        }
+    }
+}
+
+
+pub struct ServerHandler {
+    peer_addr: SocketAddr,
+    store: ServerStore,
+}
+
+impl ServerHandler {
+    pub fn new(store: ServerStore, peer_addr: SocketAddr) -> Self {
+        ServerHandler {
+            store,
+            peer_addr,
+        }
+    }
+    pub async fn handle<T: AsyncRead + AsyncWrite + Unpin>(self, mut stream: T) -> crate::Result<()> {
+        let head = read_exact!(stream, [0u8; 56])?;
+        let hash_str = String::from_utf8_lossy(&head);
+
+        match self.detect_head(hash_str.as_ref()).await {
+            Ok(ConnType::Trojan) => {
+                self.handle_trojan(&mut stream).await?;
+            }
+            Ok(ConnType::Rathole) => {
+                debug!("detect rathole");
+            }
+            Ok(ConnType::Proxy) => {
+                self.handle_proxy(&mut stream, head).await?;
+            }
+            Err(e) => error!("detect head occur err : {}",e),
+        }
+
+        Ok(())
+    }
+
+    async fn detect_head(&self, hash_str: &str) -> crate::Result<ConnType> {
+        let trojan = self.store.trojan.clone();
+        let rathole = self.store.rathole.clone();
+
+        return if trojan.password_hash.contains_key(hash_str) {
+            debug!("{} detect trojan", hash_str);
+            Ok(ConnType::Trojan)
+        } else if rathole.password_hash.contains_key(hash_str) {
+            debug!("{} detect rathole", hash_str);
+            Ok(ConnType::Rathole)
+        } else {
+            debug!("detect proxy");
+            Ok(ConnType::Proxy)
+        };
+    }
+
+    async fn handle_trojan<T: AsyncRead + AsyncWrite + Unpin>(&self, stream: &mut T) -> crate::Result<()> {
+        let [_cr, _cf, cmd, atyp] = read_exact!(stream,[0u8; 4])?;
+        let byte_addr = ByteAddr::read_addr(stream, cmd, atyp).await?;
+        info!("{} requested connection to {}",self.peer_addr,byte_addr);
+        let socks_addr = byte_addr.to_addr_str().await?;
+
+        let mut cs = TcpStream::connect(socks_addr).await?;
+
+        let [_cr, _cf] = read_exact!(stream,[0u8; 2])?;
+
+        tokio::io::copy_bidirectional(stream, &mut cs).await?;
+
+        Ok(())
+    }
+
+    async fn handle_proxy<T: AsyncRead + AsyncWrite + Unpin>(&self, stream: &mut T, head: [u8; 56]) -> crate::Result<()> {
+        info!("{} requested proxy local",self.peer_addr);
+        let trojan = self.store.trojan.clone();
+        let mut ls = TcpStream::connect(&trojan.local_addr).await?;
+        ls.write_all(&head).await?;
+
+        tokio::io::copy_bidirectional(stream, &mut ls).await?;
+        Ok(())
+    }
+}
+
+pub enum ConnType {
+    Trojan,
+    Rathole,
+    Proxy,
+}
+
+
