@@ -3,12 +3,23 @@ use std::sync::Arc;
 use shuttle::config::ClientConfig;
 use shuttle::logs::init_log;
 use shuttle::socks::{Socks, TrojanDial};
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args{
+    /// Config Path
+    #[clap(short, long)]
+    config_path: Option<String>,
+}
 
 #[tokio::main]
 async fn main() -> shuttle::Result<()> {
     init_log();
 
-    let cc = ClientConfig::load(String::from("examples/shuttlec.yaml"));
+    let args: Args= Args::parse();
+
+    let cc = ClientConfig::load(args.config_path);
 
     let dial = Arc::new(TrojanDial::new(cc.remote_addr.clone(),
                                         cc.hash.clone(),

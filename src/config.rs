@@ -64,7 +64,7 @@ pub struct Trojan {
     pub password_hash: HashMap<String, String>,
 }
 
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct ServerStore {
     pub req_map: Arc<RwLock<HashMap<String, String>>>,
     pub trojan: Arc<Trojan>,
@@ -73,7 +73,7 @@ pub struct ServerStore {
 
 impl From<Rc<ServerConfig>> for ServerStore {
     fn from(sc: Rc<ServerConfig>) -> Self {
-        ServerStore{
+        ServerStore {
             req_map: Arc::new(RwLock::new(HashMap::new())),
             trojan: Arc::new(sc.trojan.clone()),
             rathole: Arc::new(sc.rathole.clone()),
@@ -81,11 +81,14 @@ impl From<Rc<ServerConfig>> for ServerStore {
     }
 }
 
-
+const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["shuttles.yaml", "examples/shuttles.yaml"];
 
 impl ServerConfig {
-    pub fn load(file: String) -> ServerConfig {
-        let mut sc: ServerConfig = serde_yaml::from_reader(File::open(file).unwrap()).unwrap();
+    pub fn load(file_op: Option<String>) -> ServerConfig {
+        let file = open_config_file(file_op, Vec::from(DEFAULT_SERVER_CONFIG_PATH));
+
+        let mut sc: ServerConfig = serde_yaml::from_reader(file)
+            .unwrap_or_else(|e| panic!("serde read file failed {}", e));
         for mut addr in &mut sc.addrs {
             if addr.cert.is_some() && addr.key.is_some() {
                 addr.ssl_enable = true;
@@ -94,7 +97,7 @@ impl ServerConfig {
             }
         }
         for password in &sc.trojan.passwords {
-            sc.trojan.password_hash.insert(sha224(password),password.clone());
+            sc.trojan.password_hash.insert(sha224(password), password.clone());
         }
         for password in &sc.rathole.passwords {
             sc.rathole.password_hash.insert(sha224(password), password.clone());
@@ -103,11 +106,33 @@ impl ServerConfig {
     }
 }
 
+const DEFAULT_CLIENT_CONFIG_PATH: [&str; 2] = ["shuttlec.yaml", "examples/shuttlec.yaml"];
+
 impl ClientConfig {
-    pub fn load(file: String) -> ClientConfig {
-        let mut cc: ClientConfig = serde_yaml::from_reader(File::open(file).unwrap()).unwrap();
+    pub fn load(file_op: Option<String>) -> ClientConfig {
+        let file = open_config_file(file_op, Vec::from(DEFAULT_CLIENT_CONFIG_PATH));
+
+        let mut cc: ClientConfig = serde_yaml::from_reader(file)
+            .unwrap_or_else(|e| panic!("serde read file failed {}", e));
         cc.hash = sha224(&cc.password);
         cc
+    }
+}
+
+fn open_config_file(file_op: Option<String>, default_paths: Vec<&str>) -> File {
+    if file_op.is_some() {
+        let file_path = file_op.unwrap();
+        File::open(&file_path)
+            .unwrap_or_else(|e| panic!("open file [{}] failed {}", &file_path, e))
+    } else {
+        let mut of: Option<File> = Option::None;
+        for path in default_paths {
+            if let Result::Ok(file) = File::open(path) {
+                of = Option::Some(file);
+                break;
+            }
+        };
+        of.expect("Can't find the default config file ./shuttles.yaml or ./shuttlec.yaml")
     }
 }
 
@@ -157,13 +182,4 @@ pub fn load_private_key(filename: &str) -> rustls::PrivateKey {
 
 
 #[cfg(test)]
-mod tests {
-    use crate::config::ServerConfig;
-
-    #[test]
-    fn test_load_config() {
-        let sc = ServerConfig::load(String::from("examples/shuttles.yaml"));
-        println!("{:?}", sc);
-    }
-
-}
+mod tests {}
