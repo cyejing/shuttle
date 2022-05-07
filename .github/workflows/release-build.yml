@@ -85,7 +85,7 @@ jobs:
           xcopy ../../../examples/* examples
           strip shuttles.exe
           strip shuttlec.exe
-          7z a ../../../${{ matrix.name }} shuttles.exe shuttlec.exe
+          7z a ../../../${{ matrix.name }} shuttles.exe shuttlec.exe examples/*
           cd -
       - name: Post Build | Prepare artifacts [-nix]
         if: matrix.os != 'windows-latest'
