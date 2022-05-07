@@ -27,15 +27,6 @@ jobs:
           - os: ubuntu-latest
             target: i686-unknown-linux-musl
             name: shuttle-i686-unknown-linux-musl.tgz
-          - os: ubuntu-latest
-            target: arm-unknown-linux-musleabi
-            name: shuttle-arm-unknown-linux-musleabi.tgz
-          - os: ubuntu-latest
-            target: arm-unknown-linux-musleabihf
-            name: shuttle-arm-unknown-linux-musleabihf.tgz
-          - os: ubuntu-latest
-            target: armv7-unknown-linux-musleabihf
-            name: shuttle-armv7-unknown-linux-musleabihf.tgz
 
           - os: macOS-11
             target: x86_64-apple-darwin
