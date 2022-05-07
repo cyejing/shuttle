@@ -6,11 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
 tokio = { version = "1.17.0", features = ["full"] }
 bytes = "1.1"
+
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
 tracing = "0.1"
 tracing-subscriber = "0.2"
+tracing-appender = "0.2"
 
 tokio-rustls = "0.23"
 rustls-pemfile = "1"
