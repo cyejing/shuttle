@@ -82,24 +82,12 @@ jobs:
           profile: minimal
           target: ${{ matrix.target }}
 
-      - name: Build | Build
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: build
-          args: --release --locked --target ${{ matrix.target }}
-          use-cross: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Install cross
+        run: cargo install --version 0.1.16 cross
 
-      - name: Run UPX
-        # Upx may not support some platforms. Ignore the errors
-        continue-on-error: true
-        # Disable upx for mips. See https://github.com/upx/upx/issues/387
-        if: matrix.os == 'ubuntu-latest' && !contains(matrix.target, 'mips')
-        uses: crazy-max/ghaction-upx@v1
-        with:
-          version: v3.96
-          files: target/${{ matrix.target }}/release/${{ matrix.name }}
-          args: -q --best --lzma
-
+      - name: Build release
+        run: cross build --release --target ${{ matrix.target }}
+        
       - name: Post Build | Prepare artifacts [Windows]
         if: matrix.os == 'windows-latest'
         run: |
@@ -117,6 +105,7 @@ jobs:
           strip shuttles && strip shuttlec || true
           tar czvf ../../../${{ matrix.name }} shuttles shuttlec examples/*
           cd -
+
       - name: Deploy | Upload artifacts
         uses: actions/upload-artifact@v3
         with:
