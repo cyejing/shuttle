@@ -21,22 +21,26 @@ Shuttle让互联网更简单
 ```yaml
 #example/shuttles.yaml
 addrs:
-  - addr: 127.0.0.1:4880
   - addr: 127.0.0.1:4843
-    cert: example/chain.crt #https证书
-    key: example/key.key #https证书
+#    key: xxx
+#    cert: xxx
+  - addr: 127.0.0.1:4880
+logfile: logs/shuttles.log
 trojan:
+  local_addr: 127.0.0.1:80 #nginx
   passwords:
-    - sQtfRnfhcNoZYZh1wY9u #对应客户端密码
+    - sQtfRnfhcNoZYZh1wY9u
 ```
 #### Start Client
 ``./shuttlec -c example/shuttlec-socks.yaml``
 
 配置参数
 ```yaml
-runType: socks #运行类型socks 代理
-localAddr: 127.0.0.1:1080 #本地socks5代理
-remoteAddr: 127.0.0.1:4843 #服务器地址
+run_type: socks #运行类型socks 代理
+name: socks
+ssl_enable: true
+sock_addr: 127.0.0.1:4080 #本地socks5代理
+remote_addr: cyejing.cn:4843 #服务器地址
 password: sQtfRnfhcNoZYZh1wY9u #对应服务器密码
 
 ```
@@ -52,6 +56,9 @@ Enjoy
 ```yaml
 #example/shuttles.yaml
 addrs:
+  - addr: 127.0.0.1:4843
+#    key: xxx
+#    cert: xxx
   - addr: 127.0.0.1:4880
 rathole:
   passwords:
@@ -62,16 +69,16 @@ rathole:
 
 配置参数
 ```yaml
-runType: rathole
+run_type: rathole
 name: unique-name
-sslEnable: false
-remoteAddr: 127.0.0.1:4880
+ssl_enable: false
+remote_addr: 127.0.0.1:4880
 password: 58JCEmvcBkRAk1XkK1iH
 
 rats:
   - name: test
-    remoteAddr: 127.0.0.1:4022
-    localAddr: 127.0.0.1:22
+    remote_addr: 127.0.0.1:4022
+    local_addr: 127.0.0.1:22
 
 ```
 

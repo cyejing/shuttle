@@ -30,7 +30,7 @@ pub struct ClientConfig {
     pub hash: String,
     #[serde(default)]
     pub sock_addr: String,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub ssl_enable: bool,
     #[serde(default)]
     pub logfile: String,
@@ -179,6 +179,9 @@ pub fn load_private_key(filename: &str) -> rustls::PrivateKey {
     );
 }
 
+fn default_true() -> bool{
+    true
+}
 
 #[cfg(test)]
 mod tests {}
