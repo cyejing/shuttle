@@ -92,3 +92,4 @@ jobs:
           files: ${{ matrix.name }}
           generate_release_notes: true
           draft: true
+          token: ${{ secrets.SHUTTLE_GITHUB_TOKEN }}
