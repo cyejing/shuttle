@@ -14,7 +14,7 @@ struct Args{
 }
 
 #[tokio::main]
-async fn main() -> shuttle::Result<()> {
+async fn main() {
     init_log();
 
     let args: Args= Args::parse();

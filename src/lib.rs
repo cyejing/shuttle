@@ -10,30 +10,29 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub mod logs{
-    use tracing_subscriber::{EnvFilter, fmt, Registry};
-    use tracing_subscriber::fmt::time;
+    use tracing_subscriber::{EnvFilter, fmt};
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
 
     pub fn init_log() {
-        let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+        let env_filter = EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into());
         // 输出到控制台中
         let formatting_layer = fmt::layer()
             .with_thread_ids(true)
-            .with_timer(time::ChronoLocal::with_format( "%Y-%m-%d %H:%M:%S".to_string()))
             .with_writer(std::io::stdout);
 
         // 输出到文件中
-        // let file_appender = tracing_appender::rolling::never("logs", "shuttle.log");
+        let file_appender = tracing_appender::rolling::never("logs", "shuttle.log");
         // let (non_blocking_appender, _guard) = tracing_appender::non_blocking(file_appender);
-        // let file_layer = fmt::layer()
-        //     .with_ansi(false)
-        //     .with_writer(non_blocking_appender);
+        let file_layer = fmt::layer()
+            .with_ansi(false)
+            .with_writer(file_appender);
 
 
-        Registry::default()
+        tracing_subscriber::registry()
             .with(env_filter)
             .with(formatting_layer)
+            .with(file_layer)
             .init();
     }
 }

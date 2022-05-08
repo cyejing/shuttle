@@ -15,7 +15,9 @@ pub async fn start_tcp_server(addr: String, store: ServerStore) {
     loop {
         match lis.accept().await {
             Ok((ts, _sd)) => {
-                let peer_addr = ts.peer_addr().expect("read peer addr failed");
+                let peer_addr = ts.peer_addr()
+                    .map(|pd|Option::Some(pd))
+                    .unwrap_or_else(|_e| Option::None);
                 let handler = ServerHandler::new(store.clone(), peer_addr);
                 tokio::spawn(handler.handle(ts));
             }
@@ -38,7 +40,9 @@ pub async fn start_tls_server(addr: Addr, store: ServerStore) {
     loop {
         match lis.accept().await {
             Ok((ts, _sd)) => {
-                let peer_addr = ts.peer_addr().expect("read peer addr failed");
+                let peer_addr = ts.peer_addr()
+                    .map(|pd|Option::Some(pd))
+                    .unwrap_or_else(|_e| Option::None);
                 let tls_acc = acceptor.clone();
                 match tls_acc.accept(ts).await {
                     Ok(tls_ts) => {
@@ -46,12 +50,12 @@ pub async fn start_tls_server(addr: Addr, store: ServerStore) {
                         tokio::spawn(handler.handle(tls_ts));
                     }
                     Err(e) => {
-                        error!("accept tls connection err,{}", e)
+                        error!("accept tls connection err,{}", e);
                     }
                 }
             }
             Err(e) => {
-                error!("accept connection err,{}", e)
+                error!("accept connection err,{}", e);
             }
         }
     }
@@ -59,12 +63,12 @@ pub async fn start_tls_server(addr: Addr, store: ServerStore) {
 
 
 pub struct ServerHandler {
-    peer_addr: SocketAddr,
+    peer_addr: Option<SocketAddr>,
     store: ServerStore,
 }
 
 impl ServerHandler {
-    pub fn new(store: ServerStore, peer_addr: SocketAddr) -> Self {
+    pub fn new(store: ServerStore, peer_addr: Option<SocketAddr>) -> Self {
         ServerHandler {
             store,
             peer_addr,
@@ -109,8 +113,8 @@ impl ServerHandler {
     async fn handle_trojan<T: AsyncRead + AsyncWrite + Unpin>(&self, stream: &mut T) -> crate::Result<()> {
         let [_cr, _cf, cmd, atyp] = read_exact!(stream,[0u8; 4])?;
         let byte_addr = ByteAddr::read_addr(stream, cmd, atyp).await?;
-        info!("{} requested connection to {}",self.peer_addr,byte_addr);
-        let socks_addr = byte_addr.to_addr_str().await?;
+        info!("{:?} requested connection to {}",self.peer_addr,byte_addr);
+        let socks_addr = byte_addr.to_socket_addr().await?;
 
         let mut cs = TcpStream::connect(socks_addr).await?;
 
@@ -122,7 +126,7 @@ impl ServerHandler {
     }
 
     async fn handle_proxy<T: AsyncRead + AsyncWrite + Unpin>(&self, stream: &mut T, head: [u8; 56]) -> crate::Result<()> {
-        info!("{} requested proxy local",self.peer_addr);
+        info!("{:?} requested proxy local",self.peer_addr);
         let trojan = self.store.trojan.clone();
         let mut ls = TcpStream::connect(&trojan.local_addr).await?;
         ls.write_all(&head).await?;

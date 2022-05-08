@@ -27,8 +27,9 @@ impl Socks {
         }
     }
 
-    pub async fn start(self) -> crate::Result<()> {
-        let listener = TcpListener::bind(&self.cc.sock_addr).await?;
+    pub async fn start(self){
+        let listener = TcpListener::bind(&self.cc.sock_addr).await
+            .expect("Listen socks addr failed");
         info!("Listen for socks connections @ {}", &self.cc.sock_addr);
 
         loop {
@@ -160,7 +161,7 @@ impl Default for SocksDial{
 #[async_trait]
 impl DialRemote for SocksDial {
     async fn dial(&self, ba: ByteAddr) -> crate::Result<DialStream> {
-        let addr_str = ba.to_addr_str().await?;
+        let addr_str = ba.to_socket_addr().await?;
         let tts = TcpStream::connect(addr_str).await?;
         Ok(DialStream::TCP(Box::new(tts)))
     }
@@ -213,7 +214,7 @@ impl DialRemote for TrojanDial {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub enum ByteAddr {
     V4(u8, u8, [u8; 4], [u8; 2]),
     V6(u8, u8, [u8; 16], [u8; 2]),
@@ -241,7 +242,7 @@ impl Display for ByteAddr {
 
 impl ByteAddr {
     #[allow(dead_code)]
-    pub(crate) async fn to_addr_str(&self) -> crate::Result<SocketAddr> {
+    pub(crate) async fn to_socket_addr(&self) -> crate::Result<SocketAddr> {
         match self {
             ByteAddr::V4(_, _, ip, port) => {
                 let cov_port = (port[0] as u16) << 8 | port[1] as u16;
@@ -317,12 +318,31 @@ impl ByteAddr {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
     use crate::socks::ByteAddr;
 
     #[test]
-    fn test_byte_addr() {
-        let byte_addr = ByteAddr::V4(0x01, 0x02, [0x01, 0x01, 0x01, 0x01], [0x01, 0x01]);
+    fn test_as_byte_addr() {
+        let byte_addr = ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], [0x00, 0x50]);
         let bs = byte_addr.as_bytes();
-        assert_eq!(bs.as_slice(), [1, 2, 1, 1, 1, 1, 1, 1]);
+        assert_eq!(bs.as_slice(), [1, 1, 1, 1, 1, 1, 0, 80]);
+    }
+
+    #[tokio::test]
+    async fn test_byte_addr_to_sa() {
+        let byte_addr = ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], [0x00, 0x50]);
+        let sa = byte_addr.to_socket_addr().await.unwrap();
+        assert!(sa.is_ipv4());
+        assert_eq!(format!("{}", sa.ip()), "1.1.1.1");
+        assert_eq!(sa.port(),80)
+    }
+
+    #[tokio::test]
+    async fn test_byte_addr_read(){
+        let vec = vec![0x01,0x01,0x01,0x01,0x00,0x50];
+        let mut buf = Cursor::new(vec);
+        let addr = ByteAddr::read_addr(&mut buf, 0x01, 0x01).await.unwrap();
+        assert_eq!(addr, ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], [0x00, 0x50]))
+
     }
 }

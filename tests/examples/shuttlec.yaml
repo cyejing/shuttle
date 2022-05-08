@@ -1,0 +1,7 @@
+run_type: socks
+name: socks
+ssl_enable: false
+sock_addr: 127.0.0.1:4080
+remote_addr: 127.0.0.1:4880
+password: sQtfRnfhcNoZYZh1wY9u
+logfile: logs/shuttlec.log
