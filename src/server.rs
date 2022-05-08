@@ -83,6 +83,7 @@ impl ServerHandler {
                 self.handle_trojan(&mut stream).await?;
             }
             Ok(ConnType::Rathole) => {
+                self.handle_rathole(&mut stream).await?;
                 debug!("detect rathole");
             }
             Ok(ConnType::Proxy) => {
@@ -132,6 +133,11 @@ impl ServerHandler {
         ls.write_all(&head).await?;
 
         tokio::io::copy_bidirectional(stream, &mut ls).await?;
+        Ok(())
+    }
+
+    async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin>(&self, _stream: &mut T) -> crate::Result<()> {
+
         Ok(())
     }
 }

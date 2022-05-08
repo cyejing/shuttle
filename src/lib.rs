@@ -4,6 +4,7 @@ pub mod config;
 pub mod server;
 pub mod socks;
 pub mod common;
+pub mod cmd;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 

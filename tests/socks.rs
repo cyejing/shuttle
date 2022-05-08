@@ -21,7 +21,7 @@ async fn test_socks() {
     let client = reqwest::Client::builder()
         .proxy(reqwest::Proxy::http("socks5://127.0.0.1:4080").unwrap())
         .build().unwrap();
-    let resp = client.get("http://127.0.0.1:8080").send()
+    let resp = client.get("http://127.0.0.1:6080").send()
         .await.unwrap()
         .text()
         .await.unwrap();
@@ -46,7 +46,7 @@ fn start_socks() {
 }
 
 async fn start_web_server() {
-    let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
+    let listener = TcpListener::bind("127.0.0.1:6080").await.unwrap();
     info!("Listener web server 8080");
     tokio::spawn(async move {
         loop {
