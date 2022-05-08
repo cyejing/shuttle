@@ -57,7 +57,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --locked --target ${{ matrix.target }}
+          args: --release --target ${{ matrix.target }}
           use-cross: true
 
       - name: Post Build | Prepare artifacts [Windows]
