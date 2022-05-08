@@ -16,7 +16,7 @@ pub async fn start_tcp_server(addr: String, store: ServerStore) {
         match lis.accept().await {
             Ok((ts, _sd)) => {
                 let peer_addr = ts.peer_addr()
-                    .map(|pd|Option::Some(pd))
+                    .map(Option::Some)
                     .unwrap_or_else(|_e| Option::None);
                 let handler = ServerHandler::new(store.clone(), peer_addr);
                 tokio::spawn(handler.handle(ts));
@@ -41,7 +41,7 @@ pub async fn start_tls_server(addr: Addr, store: ServerStore) {
         match lis.accept().await {
             Ok((ts, _sd)) => {
                 let peer_addr = ts.peer_addr()
-                    .map(|pd|Option::Some(pd))
+                    .map(Option::Some)
                     .unwrap_or_else(|_e| Option::None);
                 let tls_acc = acceptor.clone();
                 match tls_acc.accept(ts).await {
