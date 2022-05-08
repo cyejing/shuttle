@@ -1,10 +1,11 @@
 extern crate core;
 
 pub mod config;
+pub mod store;
 pub mod server;
 pub mod socks;
 pub mod common;
-pub mod cmd;
+pub mod rathole;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 

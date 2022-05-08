@@ -64,23 +64,6 @@ pub struct Trojan {
     pub password_hash: HashMap<String, String>,
 }
 
-#[derive(Clone, Debug)]
-pub struct ServerStore {
-    pub req_map: Arc<RwLock<HashMap<String, String>>>,
-    pub trojan: Arc<Trojan>,
-    pub rathole: Arc<RatHole>,
-}
-
-impl From<Rc<ServerConfig>> for ServerStore {
-    fn from(sc: Rc<ServerConfig>) -> Self {
-        ServerStore {
-            req_map: Arc::new(RwLock::new(HashMap::new())),
-            trojan: Arc::new(sc.trojan.clone()),
-            rathole: Arc::new(sc.rathole.clone()),
-        }
-    }
-}
-
 const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["shuttles.yaml", "examples/shuttles.yaml"];
 
 impl ServerConfig {

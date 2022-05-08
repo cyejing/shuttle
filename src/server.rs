@@ -1,15 +1,18 @@
+use std::future::Future;
 use std::net::SocketAddr;
 
 use log::{debug, error, info};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::broadcast;
 
-use crate::config::{Addr, ServerStore};
+use crate::config::{Addr};
 use crate::read_exact;
 use crate::socks::ByteAddr;
+use crate::store::ServerStore;
 use crate::tls::make_tls_acceptor;
 
-pub async fn start_tcp_server(addr: String, store: ServerStore) {
+pub async fn start_tcp_server(addr: String, store: ServerStore, shutdown: impl Future) {
     let lis = TcpListener::bind(&addr).await.expect("bind port failed");
     info!("Tcp Server listener addr : {}", &addr);
     loop {
@@ -28,7 +31,7 @@ pub async fn start_tcp_server(addr: String, store: ServerStore) {
     }
 }
 
-pub async fn start_tls_server(addr: Addr, store: ServerStore) {
+pub async fn start_tls_server(addr: Addr, store: ServerStore, shutdown: impl Future) {
     let addr_str = addr.addr;
     let cert_loaded = addr.cert_loaded;
     let mut key_loaded = addr.key_loaded;
@@ -61,6 +64,14 @@ pub async fn start_tls_server(addr: Addr, store: ServerStore) {
     }
 }
 
+#[derive(Debug)]
+struct Listener {
+    store: ServerStore,
+
+    listener: TcpListener,
+    notify_shutdown: broadcast::Sender<()>,
+
+}
 
 pub struct ServerHandler {
     peer_addr: Option<SocketAddr>,
