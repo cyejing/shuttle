@@ -55,4 +55,5 @@ jobs:
       - name: Run check
         run: cargo check --verbose
       - name: Run tests
+        if: matrix.os != 'windows-latest'
         run: cargo test --verbose
