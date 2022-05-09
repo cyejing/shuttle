@@ -1,5 +1,8 @@
 pub mod frame;
 pub mod connection;
+pub mod cmd;
+pub mod parse;
+pub mod shutdown;
 
 #[cfg(test)]
 mod tests {
@@ -7,30 +10,22 @@ mod tests {
 
     use log::{error, info};
     use tokio::net::TcpListener;
+    use tokio::sync::mpsc;
 
-    use crate::rathole::connection::Connection;
     use crate::logs::init_log;
+    use crate::rathole::connection::{Connection, ConnectionHolder};
 
-    #[allow(dead_code)]
+    #[tokio::test]
     async fn test_redis_server() {
         init_log();
         let listener = TcpListener::bind("127.0.0.1:6789").await.unwrap();
         loop {
             let (ts, _) = listener.accept().await.unwrap();
-            let mut connection = Connection::new(ts);
-            tokio::spawn(async move {
-                loop {
-                    match connection.read_frame().await {
-                        Ok(f) => {
-                            info!("{:?}", f);
-                        }
-                        Err(e) => {
-                            error!("{}",e);
-                            panic!("{}", e);
-                        }
-                    }
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
+            info!("acc");
+            let (_se, re) = mpsc::channel(128);
+            let mut connection_holder = ConnectionHolder::new(Connection::new(ts), re);
+            tokio::spawn(async move{
+                connection_holder.run().await;
             });
         }
     }

@@ -1,5 +1,6 @@
 extern crate core;
 
+
 pub mod config;
 pub mod store;
 pub mod server;
@@ -11,7 +12,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub mod logs{
+pub mod logs {
     use tracing_subscriber::{EnvFilter, fmt};
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
@@ -39,20 +40,20 @@ pub mod logs{
     }
 }
 
-pub mod tls{
+pub mod tls {
     use std::sync::Arc;
 
     use tokio_rustls::rustls;
     use tokio_rustls::rustls::{Certificate, OwnedTrustAnchor, PrivateKey};
 
-    pub fn make_tls_acceptor(certs: Vec<Certificate>,key: PrivateKey) -> tokio_rustls::TlsAcceptor{
+    pub fn make_tls_acceptor(certs: Vec<Certificate>, key: PrivateKey) -> tokio_rustls::TlsAcceptor {
         let config = rustls::ServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(certs, key)
             .expect("bad certificates/private key");
 
-    tokio_rustls::TlsAcceptor::from(Arc::new(config))
+        tokio_rustls::TlsAcceptor::from(Arc::new(config))
     }
 
     pub fn make_tls_connector() -> tokio_rustls::TlsConnector {
@@ -73,7 +74,7 @@ pub mod tls{
         tokio_rustls::TlsConnector::from(Arc::new(config))
     }
 
-    pub fn make_server_name(domain: &str) -> crate::Result<rustls::ServerName>{
+    pub fn make_server_name(domain: &str) -> crate::Result<rustls::ServerName> {
         rustls::ServerName::try_from(domain)
             .map_err(|e| format!("try from domain [{}] to server name err : {}", &domain, e).into())
     }

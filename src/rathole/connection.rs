@@ -1,19 +1,58 @@
+use std::collections::HashMap;
 use std::io::Cursor;
 
 use bytes::{Buf, BytesMut};
-use log::info;
+use log::{error, info};
 use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
+use tokio::sync::mpsc;
 
+use crate::rathole::cmd::Command;
 use crate::rathole::frame::Frame;
 
-#[derive(Debug)]
-pub struct Connection<T: AsyncRead + AsyncWrite + Unpin> {
-    stream: BufWriter<T>,
-
-    buffer: BytesMut,
+pub struct ConnectionHolder<T: AsyncRead + AsyncWrite + Unpin> {
+    req_map: HashMap<String, Req>,
+    conn: Connection<T>,
+    cmd_receiver: mpsc::Receiver<Command>,
 }
 
+impl<T: AsyncRead + AsyncWrite + Unpin> ConnectionHolder<T> {
+    pub fn new(conn: Connection<T>, cmd_receiver: mpsc::Receiver<Command>) -> Self {
+        ConnectionHolder {
+            req_map: HashMap::new(),
+            conn,
+            cmd_receiver,
+        }
+    }
+
+    pub async fn run(&mut self) {
+        loop {
+            tokio::select! {
+                rof = self.conn.read_frame() =>{
+                    info!("read frame {:?}", rof.unwrap());
+                },
+                cmd = self.cmd_receiver.recv() => {
+                    info!("read cmd :{:?}", cmd);
+                },
+            }
+        }
+    }
+}
+
+
+#[derive(Debug)]
+pub struct CmdSender {
+    pub rh_name: String,
+    pub sender: mpsc::Sender<Command>,
+}
+
+#[derive(Debug)]
+struct Req {}
+
+pub struct Connection<T: AsyncRead + AsyncWrite + Unpin> {
+    stream: BufWriter<T>,
+    buffer: BytesMut,
+}
 
 impl<T: AsyncRead + AsyncWrite + Unpin> Connection<T> {
     pub fn new(socket: T) -> Self {
@@ -125,5 +164,61 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Connection<T> {
         self.stream.write_all(b"\r\n").await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::io::Cursor;
+
+    use bytes::Bytes;
+
+    use crate::common::consts;
+    use crate::rathole::connection::Connection;
+    use crate::rathole::frame::Frame;
+
+    #[tokio::test]
+    async fn test_read_write_frame_simple() {
+        let frame = Frame::Simple("hello".to_string());
+
+        let mut cell = RefCell::new(Vec::new());
+        let mut connection = Connection::new(Cursor::new(cell.get_mut()));
+        connection.write_frame(&frame).await.unwrap();
+        let read = cell.get_mut().as_slice().clone();
+        println!("{:?}", read);
+
+        let mut read_conn = Connection::new(Cursor::new(Vec::from(read)));
+        let f = read_conn.read_frame().await.unwrap().unwrap();
+        println!("{:?}", f);
+        assert!(frame.eq(&"hello"))
+    }
+
+    #[tokio::test]
+    async fn test_read_write_frame_array() {
+        let frame = Frame::Array(vec![Frame::Simple("hello".to_string()),
+                                      Frame::Integer(2),
+                                      Frame::Bulk(Bytes::from(vec![0x01, 0x02]))]);
+
+        let mut cell = RefCell::new(Vec::new());
+        let mut connection = Connection::new(Cursor::new(cell.get_mut()));
+        connection.write_frame(&frame).await.unwrap();
+        let read = cell.get_mut().as_slice().clone();
+        println!("{:?}", read);
+
+        let mut read_conn = Connection::new(Cursor::new(Vec::from(read)));
+        let f = read_conn.read_frame().await.unwrap().unwrap();
+        println!("{:?}", f);
+
+        assert_eq!(format!("{:?}", frame), format!("{:?}", f))
+    }
+
+
+    #[tokio::test]
+    async fn test_read_frame() {
+        let mut bs: Vec<u8> = Vec::new();
+        bs.extend_from_slice("*3".as_bytes());
+        bs.extend_from_slice(consts::CRLF.as_slice());
+        bs.extend_from_slice("*3".as_bytes());
     }
 }

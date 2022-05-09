@@ -4,12 +4,13 @@ use std::time::Duration;
 use log::{debug, error, info};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tokio::sync::broadcast::Receiver;
 use tokio_rustls::TlsAcceptor;
 
 use crate::config::Addr;
-use crate::read_exact;
+use crate::{rathole, read_exact};
+use crate::rathole::connection::{Connection, ConnectionHolder};
 use crate::socks::ByteAddr;
 use crate::store::ServerStore;
 use crate::tls::make_tls_acceptor;
@@ -199,7 +200,11 @@ impl ServerHandler {
         Ok(())
     }
 
-    async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin>(&mut self, _stream: &mut T) -> crate::Result<()> {
+    async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin>(&mut self, stream: &mut T) -> crate::Result<()> {
+        let (_se,re) = mpsc::channel(128);
+        let conn = Connection::new(stream);
+        let mut connection_holder = ConnectionHolder::new(conn, re);
+        connection_holder.run().await;
         Ok(())
     }
 }

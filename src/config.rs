@@ -31,6 +31,8 @@ pub struct ClientConfig {
     pub ssl_enable: bool,
     #[serde(default)]
     pub logfile: String,
+    #[serde(default)]
+    pub holes: Vec<Hole>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -60,6 +62,14 @@ pub struct Trojan {
     #[serde(skip)]
     pub password_hash: HashMap<String, String>,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Hole {
+    pub name: String,
+    pub remote_addr: String,
+    pub local_addr: String,
+}
+
 
 const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["shuttles.yaml", "examples/shuttles.yaml"];
 
