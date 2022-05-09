@@ -1,13 +1,10 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use std::rc::Rc;
-use std::sync::Arc;
 
 use crypto::digest::Digest;
 use crypto::sha2::Sha224;
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 use tokio_rustls::rustls;
 use tokio_rustls::rustls::{Certificate, PrivateKey};
 
@@ -62,23 +59,6 @@ pub struct Trojan {
     pub passwords: Vec<String>,
     #[serde(skip)]
     pub password_hash: HashMap<String, String>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ServerStore {
-    pub req_map: Arc<RwLock<HashMap<String, String>>>,
-    pub trojan: Arc<Trojan>,
-    pub rathole: Arc<RatHole>,
-}
-
-impl From<Rc<ServerConfig>> for ServerStore {
-    fn from(sc: Rc<ServerConfig>) -> Self {
-        ServerStore {
-            req_map: Arc::new(RwLock::new(HashMap::new())),
-            trojan: Arc::new(sc.trojan.clone()),
-            rathole: Arc::new(sc.rathole.clone()),
-        }
-    }
 }
 
 const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["shuttles.yaml", "examples/shuttles.yaml"];
