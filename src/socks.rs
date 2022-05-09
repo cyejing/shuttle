@@ -14,31 +14,39 @@ use crate::read_exact;
 use crate::socks::DialStream::{TCP, TLS};
 use crate::tls::{make_server_name, make_tls_connector};
 
-pub struct Socks {
-    pub cc: ClientConfig,
-    pub dial: Arc<dyn DialRemote>,
+pub async fn start_socks(cc: ClientConfig, dial: Arc<dyn DialRemote>) {
+    let listener = TcpListener::bind(&cc.sock_addr).await
+        .expect("Listen socks addr failed");
+    info!("Listen for socks connections @ {}", &cc.sock_addr);
+    let socks = Socks {
+        cc,
+        listener,
+        dial,
+    };
+    tokio::spawn(async move {
+        if let Err(e) = socks.run().await {
+            error!("socks run err : {}",e);
+        }
+    });
+}
+
+struct Socks {
+    #[allow(dead_code)]
+    cc: ClientConfig,
+    listener: TcpListener,
+    dial: Arc<dyn DialRemote>,
 }
 
 impl Socks {
-    pub fn new(cc: ClientConfig,dial: Arc<dyn DialRemote>) -> Socks {
-        Socks {
-            cc,
-            dial
-        }
-    }
-
-    pub async fn start(self){
-        let listener = TcpListener::bind(&self.cc.sock_addr).await
-            .expect("Listen socks addr failed");
-        info!("Listen for socks connections @ {}", &self.cc.sock_addr);
-
+    pub async fn run(&self) -> crate::Result<()> {
         loop {
-            let res_acc = listener.accept().await;
+            let res_acc = self.listener.accept().await;
             let dial = self.dial.clone();
             match res_acc {
-                Ok(acc) => {
+                Ok((ts, _)) => {
+                    let mut ss = SocksStream { ts };
                     tokio::spawn(async move {
-                        if let Err(e) = SocksStream::new(acc).handle(dial).await {
+                        if let Err(e) = ss.handle(dial).await {
                             error!("socks stream handle err :{:?}",e);
                         };
                     });
@@ -49,21 +57,12 @@ impl Socks {
     }
 }
 
-pub struct SocksStream {
+struct SocksStream {
     ts: TcpStream,
-    #[allow(dead_code)]
-    sd: SocketAddr,
 }
 
 impl SocksStream {
-    pub fn new((ts, sd): (TcpStream, SocketAddr)) -> SocksStream {
-        SocksStream {
-            ts,
-            sd,
-        }
-    }
-
-    pub async fn handle(&mut self, dr: Arc<dyn DialRemote>) -> crate::Result<()> {
+    async fn handle(&mut self, dr: Arc<dyn DialRemote>) -> crate::Result<()> {
         self.handshake().await?;
 
         let addr = self.read_request().await?;
@@ -149,10 +148,11 @@ pub struct SocksDial {}
 
 impl SocksDial {
     pub fn new() -> Self {
-        SocksDial{}
+        SocksDial {}
     }
 }
-impl Default for SocksDial{
+
+impl Default for SocksDial {
     fn default() -> Self {
         SocksDial::new()
     }
@@ -214,7 +214,7 @@ impl DialRemote for TrojanDial {
 }
 
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum ByteAddr {
     V4(u8, u8, [u8; 4], [u8; 2]),
     V6(u8, u8, [u8; 16], [u8; 2]),
@@ -319,6 +319,7 @@ impl ByteAddr {
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
+
     use crate::socks::ByteAddr;
 
     #[test]
@@ -334,15 +335,14 @@ mod tests {
         let sa = byte_addr.to_socket_addr().await.unwrap();
         assert!(sa.is_ipv4());
         assert_eq!(format!("{}", sa.ip()), "1.1.1.1");
-        assert_eq!(sa.port(),80)
+        assert_eq!(sa.port(), 80)
     }
 
     #[tokio::test]
-    async fn test_byte_addr_read(){
-        let vec = vec![0x01,0x01,0x01,0x01,0x00,0x50];
+    async fn test_byte_addr_read() {
+        let vec = vec![0x01, 0x01, 0x01, 0x01, 0x00, 0x50];
         let mut buf = Cursor::new(vec);
         let addr = ByteAddr::read_addr(&mut buf, 0x01, 0x01).await.unwrap();
         assert_eq!(addr, ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], [0x00, 0x50]))
     }
-
 }

@@ -1,13 +1,10 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use std::rc::Rc;
-use std::sync::Arc;
 
 use crypto::digest::Digest;
 use crypto::sha2::Sha224;
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 use tokio_rustls::rustls;
 use tokio_rustls::rustls::{Certificate, PrivateKey};
 

@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use shuttle::config::ClientConfig;
 use shuttle::logs::init_log;
-use shuttle::socks::{Socks, TrojanDial};
+use shuttle::socks::{TrojanDial};
 use clap::Parser;
+use shuttle::socks;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -24,5 +25,5 @@ async fn main() {
     let dial = Arc::new(TrojanDial::new(cc.remote_addr.clone(),
                                         cc.hash.clone(),
                                         cc.ssl_enable));
-    Socks::new(cc, dial).start().await
+    socks::start_socks(cc, dial).await;
 }

@@ -3,18 +3,15 @@ pub mod connection;
 
 #[cfg(test)]
 mod tests {
-    use std::io;
     use std::time::Duration;
 
-    use bytes::{Buf, BytesMut};
     use log::{error, info};
-    use tokio::io::{AsyncReadExt, BufWriter};
     use tokio::net::TcpListener;
 
     use crate::rathole::connection::Connection;
     use crate::logs::init_log;
 
-    #[tokio::test]
+    #[allow(dead_code)]
     async fn test_redis_server() {
         init_log();
         let listener = TcpListener::bind("127.0.0.1:6789").await.unwrap();

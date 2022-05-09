@@ -22,6 +22,7 @@ pub enum Error {
     Other(crate::Error),
 }
 
+#[allow(dead_code)]
 impl Frame {
 
     pub(crate) fn array() -> Frame {
