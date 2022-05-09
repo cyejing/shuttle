@@ -9,7 +9,7 @@ use tokio::sync::broadcast::Receiver;
 use tokio_rustls::TlsAcceptor;
 
 use crate::config::Addr;
-use crate::{rathole, read_exact};
+use crate::{read_exact};
 use crate::rathole::connection::{Connection, ConnectionHolder};
 use crate::socks::ByteAddr;
 use crate::store::ServerStore;

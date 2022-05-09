@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 
 use bytes::{Buf, BytesMut};
-use log::{error, info};
+use log::{info};
 use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
 use tokio::sync::mpsc;
@@ -31,8 +31,11 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ConnectionHolder<T> {
                 rof = self.conn.read_frame() =>{
                     info!("read frame {:?}", rof.unwrap());
                 },
-                cmd = self.cmd_receiver.recv() => {
-                    info!("read cmd :{:?}", cmd);
+                oc = self.cmd_receiver.recv() => {
+                    match oc {
+                        Some(cmd)=>info!("read cmd :{:?}", cmd),
+                        None=>panic!("receiver end"),
+                    }
                 },
             }
         }

@@ -6,9 +6,8 @@ pub mod shutdown;
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
 
-    use log::{error, info};
+    use log::{info};
     use tokio::net::TcpListener;
     use tokio::sync::mpsc;
 
@@ -22,11 +21,13 @@ mod tests {
         loop {
             let (ts, _) = listener.accept().await.unwrap();
             info!("acc");
-            let (_se, re) = mpsc::channel(128);
+            let (se, re) = mpsc::channel(128);
             let mut connection_holder = ConnectionHolder::new(Connection::new(ts), re);
             tokio::spawn(async move{
+                let _s=se;
                 connection_holder.run().await;
             });
         }
     }
+
 }

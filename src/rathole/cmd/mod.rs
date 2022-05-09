@@ -7,5 +7,9 @@ pub mod proxy;
 
 #[derive(Debug)]
 pub enum Command {
-
+    Connect,
+    Dial,
+    Exchange,
+    Ping,
+    Proxy,
 }
