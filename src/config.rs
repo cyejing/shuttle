@@ -20,7 +20,6 @@ pub struct ServerConfig {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ClientConfig {
     pub run_type: String,
-    pub name: String,
     pub remote_addr: String,
     pub password: String,
     #[serde(skip)]

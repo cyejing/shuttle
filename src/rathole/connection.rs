@@ -13,36 +13,46 @@ use crate::rathole::frame::Frame;
 pub struct ConnectionHolder<T: AsyncRead + AsyncWrite + Unpin> {
     req_map: HashMap<String, Req>,
     conn: Connection<T>,
-    cmd_receiver: mpsc::Receiver<Command>,
+    receiver: mpsc::Receiver<Command>,
 }
 
 impl<T: AsyncRead + AsyncWrite + Unpin> ConnectionHolder<T> {
-    pub fn new(conn: Connection<T>, cmd_receiver: mpsc::Receiver<Command>) -> Self {
+    pub fn new(conn: Connection<T>, receiver: mpsc::Receiver<Command>) -> Self {
         ConnectionHolder {
             req_map: HashMap::new(),
             conn,
-            cmd_receiver,
+            receiver,
         }
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(&mut self) -> crate::Result<()> {
         loop {
             tokio::select! {
-                rof = self.conn.read_frame() =>{
-                    info!("read frame {:?}", rof.unwrap());
+                rf = self.conn.read_frame() => {
+                    match rf {
+                        Ok(f) => {
+                            
+                            info!("read frame {:?}", f);
+                        },
+                        Err(e) => return Err(e),
+                    }
                 },
-                cmd = self.cmd_receiver.recv() => {
-                    info!("read cmd :{:?}", cmd);
+                oc = self.receiver.recv() => {
+                    match oc {
+                        Some(cmd) => {
+                            info!("read cmd :{:?}", cmd);
+                        },
+                        None => return Err("cmd receiver close".into()),
+                    }
                 },
             }
         }
     }
 }
 
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CmdSender {
-    pub rh_name: String,
+    pub hash: String,
     pub sender: mpsc::Sender<Command>,
 }
 
@@ -62,10 +72,10 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Connection<T> {
         }
     }
 
-    pub async fn read_frame(&mut self) -> crate::Result<Option<Frame>> {
+    pub async fn read_frame(&mut self) -> crate::Result<Frame> {
         loop {
             if let Some(frame) = self.parse_frame()? {
-                return Ok(Some(frame));
+                return Ok(frame);
             }
 
             if 0 == self.stream.read_buf(&mut self.buffer).await? {
@@ -189,7 +199,7 @@ mod tests {
         println!("{:?}", read);
 
         let mut read_conn = Connection::new(Cursor::new(Vec::from(read)));
-        let f = read_conn.read_frame().await.unwrap().unwrap();
+        let f = read_conn.read_frame().await.unwrap();
         println!("{:?}", f);
         assert!(frame.eq(&"hello"))
     }
@@ -207,7 +217,7 @@ mod tests {
         println!("{:?}", read);
 
         let mut read_conn = Connection::new(Cursor::new(Vec::from(read)));
-        let f = read_conn.read_frame().await.unwrap().unwrap();
+        let f = read_conn.read_frame().await.unwrap();
         println!("{:?}", f);
 
         assert_eq!(format!("{:?}", frame), format!("{:?}", f))

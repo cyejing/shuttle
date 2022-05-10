@@ -1,5 +1,4 @@
 run_type: rathole
-name: unique-name
 remote_addr: 127.0.0.1:4880
 password: 58JCEmvcBkRAk1XkK1iH
 logfile: logs/shuttlec.log

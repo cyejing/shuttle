@@ -10,7 +10,8 @@ mod tests {
 
     use log::{error, info};
     use tokio::net::TcpListener;
-    use tokio::sync::mpsc;
+    use tokio::sync::{broadcast, mpsc};
+    use tokio::sync::broadcast::Sender;
 
     use crate::logs::init_log;
     use crate::rathole::connection::{Connection, ConnectionHolder};
@@ -22,11 +23,15 @@ mod tests {
         loop {
             let (ts, _) = listener.accept().await.unwrap();
             info!("acc");
-            let (_se, re) = mpsc::channel(128);
+            let (se, re) = mpsc::channel(128);
             let mut connection_holder = ConnectionHolder::new(Connection::new(ts), re);
-            tokio::spawn(async move{
-                connection_holder.run().await;
+            tokio::spawn(async move {
+                let se = se;
+                if let Err(e) = connection_holder.run().await {
+                    error!("err : {:?}",e);
+                }
             });
         }
     }
+
 }

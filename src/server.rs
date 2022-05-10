@@ -10,7 +10,7 @@ use tokio_rustls::TlsAcceptor;
 
 use crate::config::Addr;
 use crate::{rathole, read_exact};
-use crate::rathole::connection::{Connection, ConnectionHolder};
+use crate::rathole::connection::{CmdSender, Connection, ConnectionHolder};
 use crate::socks::ByteAddr;
 use crate::store::ServerStore;
 use crate::tls::make_tls_acceptor;
@@ -60,6 +60,7 @@ impl Server {
 
             let mut handler = ServerHandler {
                 peer_addr,
+                hash: Option::None,
                 store: self.store.clone(),
                 shutdown: self.notify_shutdown.subscribe(),
             };
@@ -113,6 +114,7 @@ impl Server {
 
 struct ServerHandler {
     peer_addr: Option<SocketAddr>,
+    hash: Option<String>,
     store: ServerStore,
     shutdown: Receiver<()>,
 }
@@ -125,7 +127,6 @@ impl ServerHandler {
             }
             Ok(ConnType::Rathole) => {
                 self.handle_rathole(&mut stream).await?;
-                debug!("detect rathole");
             }
             Ok(ConnType::Proxy(head)) => {
                 self.handle_proxy(&mut stream, head).await?;
@@ -136,7 +137,7 @@ impl ServerHandler {
         Ok(())
     }
 
-    async fn detect_head<T: AsyncRead + AsyncWrite + Unpin>(&self, mut stream: T) -> crate::Result<ConnType> {
+    async fn detect_head<T: AsyncRead + AsyncWrite + Unpin>(&mut self, mut stream: T) -> crate::Result<ConnType> {
         let head = read_exact!(stream, [0u8; 56])?;
         let hash_str = String::from_utf8_lossy(&head);
         let hash_str = hash_str.as_ref();
@@ -146,9 +147,11 @@ impl ServerHandler {
 
         return if trojan.password_hash.contains_key(hash_str) {
             debug!("{} detect trojan", hash_str);
+            self.hash = Option::Some(String::from(hash_str));
             Ok(ConnType::Trojan)
         } else if rathole.password_hash.contains_key(hash_str) {
             debug!("{} detect rathole", hash_str);
+            self.hash = Option::Some(String::from(hash_str));
             Ok(ConnType::Rathole)
         } else {
             debug!("detect proxy");
@@ -201,10 +204,12 @@ impl ServerHandler {
     }
 
     async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin>(&mut self, stream: &mut T) -> crate::Result<()> {
-        let (_se,re) = mpsc::channel(128);
+        let hash = self.hash.clone().expect("rathole hash empty!");
+        let (sender,receiver) = mpsc::channel(128);
+        self.store.set_sender(CmdSender { hash, sender });
         let conn = Connection::new(stream);
-        let mut connection_holder = ConnectionHolder::new(conn, re);
-        connection_holder.run().await;
+        let mut connection_holder = ConnectionHolder::new(conn, receiver);
+        connection_holder.run().await?;
         Ok(())
     }
 }
