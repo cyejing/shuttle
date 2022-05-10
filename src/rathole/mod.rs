@@ -16,7 +16,6 @@ mod tests {
     use crate::logs::init_log;
     use crate::rathole::connection::{Connection, ConnectionHolder};
 
-    #[tokio::test]
     async fn test_redis_server() {
         init_log();
         let listener = TcpListener::bind("127.0.0.1:6789").await.unwrap();
