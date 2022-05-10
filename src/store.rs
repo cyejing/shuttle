@@ -1,7 +1,6 @@
-use std::borrow::{Borrow, BorrowMut};
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use tokio::sync::RwLock;
 use crate::config::{RatHole, ServerConfig, Trojan};
 use crate::rathole::connection::CmdSender;

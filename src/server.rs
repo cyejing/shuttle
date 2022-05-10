@@ -67,18 +67,18 @@ impl Server {
             match &self.acceptor {
                 Option::Some(tls_acc) => {
                     let tls_acc = tls_acc.clone();
-                    match tls_acc.accept(socket).await {
-                        Ok(tls_ts) => {
-                            tokio::spawn(async move {
+                    tokio::spawn(async move {
+                        match tls_acc.accept(socket).await {
+                            Ok(tls_ts) => {
                                 if let Err(err) = handler.run(tls_ts).await {
                                     error!("tls connection error : {}",err);
                                 }
-                            });
-                        }
-                        Err(e) => {
-                            error!("accept tls connection err :{}", e);
-                        }
-                    };
+                            }
+                            Err(e) => {
+                                error!("accept tls connection err :{}", e);
+                            }
+                        };
+                    });
                 }
                 Option::None => {
                     tokio::spawn(async move {
@@ -127,6 +127,7 @@ impl ServerHandler {
             }
             Ok(ConnType::Rathole) => {
                 self.handle_rathole(&mut stream).await?;
+                debug!("detect rathole");
             }
             Ok(ConnType::Proxy(head)) => {
                 self.handle_proxy(&mut stream, head).await?;
@@ -137,26 +138,46 @@ impl ServerHandler {
         Ok(())
     }
 
-    async fn detect_head<T: AsyncRead + AsyncWrite + Unpin>(&mut self, mut stream: T) -> crate::Result<ConnType> {
-        let head = read_exact!(stream, [0u8; 56])?;
-        let hash_str = String::from_utf8_lossy(&head);
-        let hash_str = hash_str.as_ref();
+    async fn detect_head<T: AsyncRead + AsyncWrite + Unpin>(&mut self, stream: T) -> crate::Result<ConnType> {
+        let head = self.read_head(stream).await?;
+        if head.len() < 56{
+            return Ok(ConnType::Proxy(head));
+        }
+        let hash_str = String::from_utf8(head.clone())?;
 
         let trojan = self.store.trojan.clone();
         let rathole = self.store.rathole.clone();
 
-        return if trojan.password_hash.contains_key(hash_str) {
+        return if trojan.password_hash.contains_key(&hash_str) {
             debug!("{} detect trojan", hash_str);
-            self.hash = Option::Some(String::from(hash_str));
+            self.hash = Option::Some(hash_str);
             Ok(ConnType::Trojan)
-        } else if rathole.password_hash.contains_key(hash_str) {
+        } else if rathole.password_hash.contains_key(&hash_str) {
             debug!("{} detect rathole", hash_str);
-            self.hash = Option::Some(String::from(hash_str));
+            self.hash = Option::Some(hash_str);
             Ok(ConnType::Rathole)
         } else {
             debug!("detect proxy");
             Ok(ConnType::Proxy(head))
         };
+    }
+
+    async fn read_head<T: AsyncRead + AsyncWrite + Unpin>(&self, mut stream: T) -> crate::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        for _i in 0..56 {
+            let u81 = stream.read_u8().await?;
+            if u81 == b'\r' {
+                let u82 = stream.read_u8().await?;
+                if u82 == b'\n' {
+                    buf.push(u81);
+                    buf.push(u82);
+                    return Ok(buf);
+                }
+            } else {
+                buf.push(u81);
+            }
+        }
+        Ok(buf)
     }
 
     async fn handle_trojan<T: AsyncRead + AsyncWrite + Unpin>(&mut self, stream: &mut T) -> crate::Result<()> {
@@ -183,11 +204,11 @@ impl ServerHandler {
         Ok(())
     }
 
-    async fn handle_proxy<T: AsyncRead + AsyncWrite + Unpin>(&mut self, stream: &mut T, head: [u8; 56]) -> crate::Result<()> {
+    async fn handle_proxy<T: AsyncRead + AsyncWrite + Unpin>(&mut self, stream: &mut T, head: Vec<u8>) -> crate::Result<()> {
         info!("{:?} requested proxy local",self.peer_addr);
         let trojan = self.store.trojan.clone();
         let mut ls = TcpStream::connect(&trojan.local_addr).await?;
-        ls.write_all(&head).await?;
+        ls.write_all(head.as_slice()).await?;
 
         tokio::select! {
             res = tokio::io::copy_bidirectional(stream, &mut ls) => {
@@ -217,7 +238,7 @@ impl ServerHandler {
 pub enum ConnType {
     Trojan,
     Rathole,
-    Proxy([u8; 56]),
+    Proxy(Vec<u8>),
 }
 
 

@@ -26,4 +26,6 @@ async fn main() {
                                         cc.hash.clone(),
                                         cc.ssl_enable));
     socks::start_socks(cc, dial).await;
+
+    tokio::signal::ctrl_c().await.expect("shut down");
 }

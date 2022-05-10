@@ -11,6 +11,7 @@ use shuttle::socks;
 use shuttle::socks::{TrojanDial};
 use shuttle::store::ServerStore;
 
+
 #[tokio::test]
 async fn test_socks() {
     init_log();
@@ -50,7 +51,7 @@ async fn start_socks() {
 
 async fn start_web_server() {
     let listener = TcpListener::bind("127.0.0.1:6080").await.unwrap();
-    info!("Listener web server 8080");
+    info!("Listener web server 6080");
     tokio::spawn(async move {
         loop {
             let (mut ts, _sa) = listener.accept().await.unwrap();
