@@ -1,4 +1,9 @@
+use std::sync::Arc;
+
 use bytes::Bytes;
+
+use async_trait::async_trait;
+use crate::rathole::cmd::{Command, CommandApply, CommandExec, CommandParse};
 use crate::rathole::connection::CmdSender;
 use crate::rathole::frame::Frame;
 use crate::rathole::parse::{Parse, ParseError};
@@ -12,16 +17,22 @@ impl Ping {
     pub fn new(msg: Option<String>) -> Ping {
         Ping { msg }
     }
+}
 
-    pub(crate) fn parse_frames(parse: &mut Parse) -> crate::Result<Ping> {
+
+impl CommandParse<Ping> for Ping {
+    fn parse_frames(parse: &mut Parse) -> crate::Result<Ping> {
         match parse.next_string() {
             Ok(msg) => Ok(Ping::new(Some(msg))),
             Err(ParseError::EndOfStream) => Ok(Ping::default()),
             Err(e) => Err(e.into()),
         }
     }
+}
 
-    pub(crate) async fn apply(self, dst: &mut CmdSender) -> crate::Result<()> {
+#[async_trait]
+impl CommandApply for Ping {
+    async fn apply(self, sender: Arc<CmdSender>) -> crate::Result<()> {
         let _response = match self.msg {
             None => Frame::Simple("PONG".to_string()),
             Some(msg) => Frame::Bulk(Bytes::from(msg)),

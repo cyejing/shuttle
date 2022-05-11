@@ -10,7 +10,7 @@ use crate::rathole::frame::Frame;
 /// cursor-like API. Each command struct includes a `parse_frame` method that
 /// uses a `Parse` to extract its fields.
 #[derive(Debug)]
-pub(crate) struct Parse {
+pub struct Parse {
     /// Array frame iterator.
     parts: vec::IntoIter<Frame>,
 }
@@ -20,7 +20,7 @@ pub(crate) struct Parse {
 /// Only `EndOfStream` errors are handled at runtime. All other errors result in
 /// the connection being terminated.
 #[derive(Debug)]
-pub(crate) enum ParseError {
+pub enum ParseError {
     /// Attempting to extract a value failed due to the frame being fully
     /// consumed.
     EndOfStream,

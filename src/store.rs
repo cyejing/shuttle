@@ -13,8 +13,8 @@ pub struct ServerStore {
 }
 
 impl ServerStore {
-    pub(crate) fn set_sender(&self, sender: CmdSender) {
-        self.cmd_sender_map.blocking_write().insert(sender.hash.clone(), Arc::new(sender));
+    pub(crate) fn set_sender(&self, sender: Arc<CmdSender>) {
+        self.cmd_sender_map.blocking_write().insert(sender.hash.clone(), sender);
     }
 
     pub(crate) fn get_sender(&self,hash: &String) -> Option<Arc<CmdSender>>{

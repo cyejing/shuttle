@@ -1,70 +1,96 @@
-use std::collections::HashMap;
+use std::cell::{RefCell};
 use std::io::Cursor;
+use std::sync::Arc;
 
 use bytes::{Buf, BytesMut};
 use log::{error, info};
 use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::rathole::cmd::Command;
 use crate::rathole::frame::Frame;
 
-pub struct ConnectionHolder<T: AsyncRead + AsyncWrite + Unpin> {
-    req_map: HashMap<String, Req>,
+pub struct ConnectionHolder<T: AsyncRead + AsyncWrite + Unpin+Send> {
+    sender: Arc<CmdSender>,
     conn: Connection<T>,
     receiver: mpsc::Receiver<Command>,
+    notify_shutdown: broadcast::Sender<()>,
 }
 
-impl<T: AsyncRead + AsyncWrite + Unpin> ConnectionHolder<T> {
-    pub fn new(conn: Connection<T>, receiver: mpsc::Receiver<Command>) -> Self {
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> ConnectionHolder<T> {
+    pub fn new(conn: Connection<T>, receiver: mpsc::Receiver<Command>, sender: Arc<CmdSender>) -> Self {
+        let (notify_shutdown, _) = broadcast::channel(1);
+
         ConnectionHolder {
-            req_map: HashMap::new(),
-            conn,
+            conn: conn,
             receiver,
+            sender,
+            notify_shutdown,
         }
     }
 
     pub async fn run(&mut self) -> crate::Result<()> {
+        let mut shutdown = self.notify_shutdown.subscribe();
         loop {
-            tokio::select! {
-                rf = self.conn.read_frame() => {
-                    match rf {
-                        Ok(f) => {
-                            
-                            info!("read frame {:?}", f);
-                        },
-                        Err(e) => return Err(e),
-                    }
-                },
-                oc = self.receiver.recv() => {
-                    match oc {
-                        Some(cmd) => {
-                            info!("read cmd :{:?}", cmd);
-                        },
-                        None => return Err("cmd receiver close".into()),
-                    }
-                },
+            Self::read_command(&mut self.conn, self.sender.clone()).await;
+            Self::recv_command(&mut self.conn, &mut self.receiver).await;
+        }
+
+
+        // loop {
+        //     tokio::select! {
+        //         r = Self::read_command(self.conn.get_mut(), self.sender.clone()) => r?,
+        //         r2 = Self::recv_command(self.conn.get_mut(), &mut self.receiver) => r2?,
+        //         _ = shutdown.recv() => return Ok(()),
+        //     }
+        // }
+    }
+
+    async fn read_command(conn:&mut Connection<T>,
+                              sender: Arc<CmdSender>) -> crate::Result<()> {
+        let f = conn.read_frame().await?;
+        info!("{}", f);
+        let cmd = Command::from_frame(f)?;
+        info!("{:?}", cmd);
+        cmd.apply(sender.clone()).await?;
+        Ok(())
+    }
+
+    async fn recv_command(conn:&mut Connection<T>,
+                          receiver: &mut mpsc::Receiver<Command>) -> crate::Result<()> {
+        let oc = receiver.recv().await;
+        match oc {
+            Some(cmd) => {
+                info!("read cmd :{:?}", cmd);
+                cmd.exec(conn);
+                Ok(())
             }
+            None => Err("cmd receiver close".into()),
         }
     }
 }
 
+/// command sender
 #[derive(Debug, Clone)]
 pub struct CmdSender {
     pub hash: String,
     pub sender: mpsc::Sender<Command>,
 }
 
-#[derive(Debug)]
-struct Req {}
+impl CmdSender {
+    pub async fn send(&self, cmd: Command) -> crate::Result<()> {
+        Ok(self.sender.send(cmd).await?)
+    }
+}
 
-pub struct Connection<T: AsyncRead + AsyncWrite + Unpin> {
+/// connection
+pub struct Connection<T: AsyncRead + AsyncWrite + Unpin + Send> {
     stream: BufWriter<T>,
     buffer: BytesMut,
 }
 
-impl<T: AsyncRead + AsyncWrite + Unpin> Connection<T> {
+impl<T: AsyncRead + AsyncWrite + Unpin+Send> Connection<T> {
     pub fn new(socket: T) -> Self {
         Connection {
             stream: BufWriter::new(socket),

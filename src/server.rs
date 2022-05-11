@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use log::{debug, error, info};
@@ -9,7 +10,7 @@ use tokio::sync::broadcast::Receiver;
 use tokio_rustls::TlsAcceptor;
 
 use crate::config::Addr;
-use crate::{rathole, read_exact};
+use crate::{read_exact};
 use crate::rathole::connection::{CmdSender, Connection, ConnectionHolder};
 use crate::socks::ByteAddr;
 use crate::store::ServerStore;
@@ -22,9 +23,9 @@ pub async fn start_server(addr: Addr, store: ServerStore) {
     let acceptor = if addr.ssl_enable {
         let cert_loaded = addr.cert_loaded;
         let mut key_loaded = addr.key_loaded;
-        Option::Some(make_tls_acceptor(cert_loaded, key_loaded.remove(0)))
+        Some(make_tls_acceptor(cert_loaded, key_loaded.remove(0)))
     } else {
-        Option::None
+        None
     };
 
     let (notify_shutdown, _) = broadcast::channel(1);
@@ -65,7 +66,7 @@ impl Server {
                 shutdown: self.notify_shutdown.subscribe(),
             };
             match &self.acceptor {
-                Option::Some(tls_acc) => {
+                Some(tls_acc) => {
                     let tls_acc = tls_acc.clone();
                     tokio::spawn(async move {
                         match tls_acc.accept(socket).await {
@@ -80,7 +81,7 @@ impl Server {
                         };
                     });
                 }
-                Option::None => {
+                None => {
                     tokio::spawn(async move {
                         if let Err(err) = handler.run(socket).await {
                             error!("tcp connection error : {}",err);
@@ -120,7 +121,7 @@ struct ServerHandler {
 }
 
 impl ServerHandler {
-    async fn run<T: AsyncRead + AsyncWrite + Unpin>(&mut self, mut stream: T) -> crate::Result<()> {
+    async fn run<T: AsyncRead + AsyncWrite + Unpin + Send>(&mut self, mut stream: T) -> crate::Result<()> {
         match self.detect_head(&mut stream).await {
             Ok(ConnType::Trojan) => {
                 self.handle_trojan(&mut stream).await?;
@@ -224,13 +225,14 @@ impl ServerHandler {
         Ok(())
     }
 
-    async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin>(&mut self, stream: &mut T) -> crate::Result<()> {
+    async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin+Send>(&mut self, stream: &mut T) -> crate::Result<()> {
         let hash = self.hash.clone().expect("rathole hash empty!");
         let (sender,receiver) = mpsc::channel(128);
-        self.store.set_sender(CmdSender { hash, sender });
+        let cmd_sender = Arc::new(CmdSender { hash, sender });
+        self.store.set_sender(cmd_sender.clone());
         let conn = Connection::new(stream);
-        let mut connection_holder = ConnectionHolder::new(conn, receiver);
-        connection_holder.run().await?;
+        let mut connection_holder = ConnectionHolder::new(conn, receiver, cmd_sender);
+        connection_holder.run().await;
         Ok(())
     }
 }
