@@ -29,7 +29,7 @@ impl Frame {
         Frame::Array(vec![])
     }
 
-    pub(crate) fn push_bulk(&mut self, bytes: Bytes) {
+    pub(crate) fn push_bulk(&mut self, bytes: Bytes){
         match self {
             Frame::Array(vec) => {
                 vec.push(Frame::Bulk(bytes));
@@ -38,7 +38,7 @@ impl Frame {
         }
     }
 
-    pub(crate) fn push_int(&mut self, value: u64) {
+    pub(crate) fn push_int(&mut self, value: u64){
         match self {
             Frame::Array(vec) => {
                 vec.push(Frame::Integer(value));
@@ -182,12 +182,14 @@ impl fmt::Display for Frame {
             },
             Frame::Null => "(nil)".fmt(fmt),
             Frame::Array(parts) => {
+                write!(fmt, "[")?;
                 for (i, part) in parts.iter().enumerate() {
-                    if i > 0 {
-                        write!(fmt, " ")?;
-                        part.fmt(fmt)?;
+                    if i!=0{
+                        write!(fmt, ", ")?;
                     }
+                    part.fmt(fmt)?;
                 }
+                write!(fmt, "]")?;
 
                 Ok(())
             }

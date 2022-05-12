@@ -29,6 +29,7 @@ pub enum ParseError {
     Other(crate::Error),
 }
 
+#[allow(dead_code)]
 impl Parse {
     /// Create a new `Parse` to parse the contents of `frame`.
     ///

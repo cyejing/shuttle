@@ -10,6 +10,7 @@ use tokio::sync::broadcast;
 /// been received. Callers may query for whether the shutdown signal has been
 /// received or not.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) struct Shutdown {
     /// `true` if the shutdown signal has been received
     shutdown: bool,
@@ -18,6 +19,7 @@ pub(crate) struct Shutdown {
     notify: broadcast::Receiver<()>,
 }
 
+#[allow(dead_code)]
 impl Shutdown {
     /// Create a new `Shutdown` backed by the given `broadcast::Receiver`.
     pub(crate) fn new(notify: broadcast::Receiver<()>) -> Shutdown {

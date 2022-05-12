@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
-use bytes::Bytes;
-
 use async_trait::async_trait;
-use crate::rathole::cmd::{Command, CommandApply, CommandExec, CommandParse};
-use crate::rathole::connection::CmdSender;
-use crate::rathole::frame::Frame;
+use crate::rathole::cmd::{Command, CommandApply, CommandParse};
+use crate::rathole::cmd::resp::Resp;
+use crate::rathole::session::CmdSender;
 use crate::rathole::parse::{Parse, ParseError};
 
 #[derive(Debug, Default)]
@@ -18,7 +16,6 @@ impl Ping {
         Ping { msg }
     }
 }
-
 
 impl CommandParse<Ping> for Ping {
     fn parse_frames(parse: &mut Parse) -> crate::Result<Ping> {
@@ -33,14 +30,11 @@ impl CommandParse<Ping> for Ping {
 #[async_trait]
 impl CommandApply for Ping {
     async fn apply(self, sender: Arc<CmdSender>) -> crate::Result<()> {
-        let _response = match self.msg {
-            None => Frame::Simple("PONG".to_string()),
-            Some(msg) => Frame::Bulk(Bytes::from(msg)),
+        let resp = match self.msg {
+            None => Resp::new("PONG".to_string()),
+            Some(msg) => Resp::new(msg),
         };
-        //
-        // // Write the response back to the client
-        // dst.write_frame(&response).await?;
 
-        Ok(())
+        sender.send(Command::Resp(resp)).await
     }
 }

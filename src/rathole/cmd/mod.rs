@@ -1,15 +1,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::rathole::cmd::ping::Ping;
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::unknown::Unknown;
-use crate::rathole::connection::{CmdSender, Connection};
+use crate::rathole::session::{CmdSender};
 use crate::rathole::frame::Frame;
 use crate::rathole::parse::Parse;
-use crate::rathole::shutdown;
 
 pub mod ping;
 pub mod dial;
@@ -54,11 +52,11 @@ impl Command {
         }
     }
 
-    pub async fn exec<T: AsyncRead + AsyncWrite + Unpin + Send>(self, conn: &mut Connection<T>) -> crate::Result<()> {
+    pub fn exec(self) -> crate::Result<Frame> {
         use Command::*;
 
         match self {
-            Resp(resp) => resp.exec(conn).await,
+            Resp(resp) => resp.exec(),
             _ => Err("undo".into()),
         }
     }
@@ -73,7 +71,6 @@ pub trait CommandApply {
     async fn apply(self, sender: Arc<CmdSender>) -> crate::Result<()>;
 }
 
-#[async_trait]
-pub trait CommandExec<T: AsyncRead + AsyncWrite + Unpin + Send> {
-    async fn exec(self, conn: &mut Connection<T>) -> crate::Result<()>;
+pub trait CommandExec {
+    fn exec(self) -> crate::Result<Frame>;
 }

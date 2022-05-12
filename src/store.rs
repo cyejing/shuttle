@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::sync::{Arc};
 use tokio::sync::RwLock;
 use crate::config::{RatHole, ServerConfig, Trojan};
-use crate::rathole::connection::CmdSender;
+use crate::rathole::session::CmdSender;
 
 #[derive(Debug, Clone)]
 pub struct ServerStore {
@@ -12,6 +12,7 @@ pub struct ServerStore {
     pub rathole: Arc<RatHole>,
 }
 
+#[allow(dead_code)]
 impl ServerStore {
     pub(crate) fn set_sender(&self, sender: Arc<CmdSender>) {
         self.cmd_sender_map.blocking_write().insert(sender.hash.clone(), sender);

@@ -3,15 +3,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use log::{debug, error, info};
+use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc};
 use tokio::sync::broadcast::Receiver;
 use tokio_rustls::TlsAcceptor;
 
+use crate::read_exact;
 use crate::config::Addr;
-use crate::{read_exact};
-use crate::rathole::connection::{CmdSender, Connection, ConnectionHolder};
+use crate::rathole::session::{CmdSender, CommandRead, CommandWrite};
 use crate::socks::ByteAddr;
 use crate::store::ServerStore;
 use crate::tls::make_tls_acceptor;
@@ -141,7 +142,7 @@ impl ServerHandler {
 
     async fn detect_head<T: AsyncRead + AsyncWrite + Unpin>(&mut self, stream: T) -> crate::Result<ConnType> {
         let head = self.read_head(stream).await?;
-        if head.len() < 56{
+        if head.len() < 56 {
             return Ok(ConnType::Proxy(head));
         }
         let hash_str = String::from_utf8(head.clone())?;
@@ -225,15 +226,23 @@ impl ServerHandler {
         Ok(())
     }
 
-    async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin+Send>(&mut self, stream: &mut T) -> crate::Result<()> {
+    async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin + Send>(&mut self, stream: &mut T) -> crate::Result<()> {
+        let (sender, receiver) = mpsc::channel(128);
         let hash = self.hash.clone().expect("rathole hash empty!");
-        let (sender,receiver) = mpsc::channel(128);
         let cmd_sender = Arc::new(CmdSender { hash, sender });
         self.store.set_sender(cmd_sender.clone());
-        let conn = Connection::new(stream);
-        let mut connection_holder = ConnectionHolder::new(conn, receiver, cmd_sender);
-        connection_holder.run().await;
-        Ok(())
+
+        let (read, write) = io::split(stream);
+
+        let mut command_read = CommandRead::new(read, cmd_sender);
+        let mut command_write = CommandWrite::new(write, receiver);
+
+        loop {
+            tokio::select! {
+                r = command_read.read_command() => r?,
+                w = command_write.write_command() => w?,
+            }
+        }
     }
 }
 
