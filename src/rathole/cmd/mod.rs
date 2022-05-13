@@ -5,9 +5,8 @@ use async_trait::async_trait;
 use crate::rathole::cmd::ping::Ping;
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::unknown::Unknown;
-use crate::rathole::session::{CmdSender};
-use crate::rathole::frame::Frame;
-use crate::rathole::parse::Parse;
+use crate::rathole::session::{CommandSender};
+use crate::rathole::frame::{Frame, Parse};
 
 pub mod ping;
 pub mod dial;
@@ -41,7 +40,7 @@ impl Command {
         Ok(command)
     }
 
-    pub async fn apply(self, sender: Arc<CmdSender>) -> crate::Result<()> {
+    pub async fn apply(self, sender: Arc<CommandSender>) -> crate::Result<()> {
         use Command::*;
 
         match self {
@@ -57,6 +56,7 @@ impl Command {
 
         match self {
             Resp(resp) => resp.exec(),
+            Ping(ping) => ping.exec(),
             _ => Err("undo".into()),
         }
     }
@@ -68,9 +68,9 @@ pub trait CommandParse<T> {
 
 #[async_trait]
 pub trait CommandApply {
-    async fn apply(self, sender: Arc<CmdSender>) -> crate::Result<()>;
+    async fn apply(&self, sender: Arc<CommandSender>) -> crate::Result<()>;
 }
 
 pub trait CommandExec {
-    fn exec(self) -> crate::Result<Frame>;
+    fn exec(&self) -> crate::Result<Frame>;
 }

@@ -5,9 +5,8 @@ use bytes::Bytes;
 use log::debug;
 
 use crate::rathole::cmd::{CommandApply, CommandExec, CommandParse};
-use crate::rathole::frame::Frame;
-use crate::rathole::parse::{Parse, ParseError};
-use crate::rathole::session::CmdSender;
+use crate::rathole::frame::{Frame, Parse, ParseError};
+use crate::rathole::session::CommandSender;
 
 #[derive(Debug, Default)]
 pub struct Resp {
@@ -32,16 +31,17 @@ impl CommandParse<Resp> for Resp {
 
 #[async_trait]
 impl CommandApply for Resp {
-    async fn apply(self, _sender: Arc<CmdSender>) -> crate::Result<()> {
+    async fn apply(&self, _sender: Arc<CommandSender>) -> crate::Result<()> {
         debug!("resp : {:?}", self);
         todo!()
     }
 }
 
 impl CommandExec for Resp {
-    fn exec(self) -> crate::Result<Frame> {
+    fn exec(&self) -> crate::Result<Frame> {
         let mut f = Frame::array();
-        f.push_bulk(Bytes::from(self.msg));
+        f.push_bulk(Bytes::from("resp"));
+        f.push_bulk(Bytes::from(self.msg.clone()));
         Ok(f)
     }
 }

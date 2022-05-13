@@ -12,22 +12,16 @@ use crate::rathole::frame::Frame;
 
 /// command sender
 #[derive(Debug, Clone)]
-pub struct CmdSender {
+pub struct CommandSender {
     pub hash: String,
     pub sender: mpsc::Sender<Command>,
-}
-
-impl CmdSender {
-    pub async fn send(&self, cmd: Command) -> crate::Result<()> {
-        Ok(self.sender.send(cmd).await?)
-    }
 }
 
 /// command read
 pub struct CommandRead<T> {
     read: ReadHalf<T>,
     buffer: BytesMut,
-    sender: Arc<CmdSender>,
+    sender: Arc<CommandSender>,
 }
 
 /// command write
@@ -36,8 +30,19 @@ pub struct CommandWrite<T> {
     receiver: mpsc::Receiver<Command>,
 }
 
+
+impl CommandSender {
+    pub fn new(hash: String, sender: mpsc::Sender<Command>) -> Self{
+        CommandSender{ hash, sender }
+    }
+
+    pub async fn send(&self, cmd: Command) -> crate::Result<()> {
+        Ok(self.sender.send(cmd).await?)
+    }
+}
+
 impl<T: AsyncRead> CommandRead<T> {
-    pub fn new(read: ReadHalf<T>, sender: Arc<CmdSender>) -> Self {
+    pub fn new(read: ReadHalf<T>, sender: Arc<CommandSender>) -> Self {
         CommandRead {
             read,
             sender,
@@ -54,7 +59,7 @@ impl<T: AsyncRead> CommandRead<T> {
         Ok(())
     }
 
-    async fn read_frame(&mut self) -> crate::Result<Frame> {
+    pub async fn read_frame(&mut self) -> crate::Result<Frame> {
         loop {
             if let Some(frame) = self.parse_frame()? {
                 return Ok(frame);
@@ -115,7 +120,7 @@ impl<T: AsyncWrite> CommandWrite<T> {
         }
     }
 
-    async fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
+    pub async fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
         match frame {
             Frame::Array(val) => {
                 self.write.write_u8(b'*').await?;
@@ -193,13 +198,13 @@ mod tests {
     use tokio::sync::mpsc;
 
     use crate::common::consts;
-    use crate::rathole::session::{CmdSender, CommandRead, CommandWrite};
+    use crate::rathole::session::{CommandSender, CommandRead, CommandWrite};
     use crate::rathole::frame::Frame;
 
     fn new_command_read(buf: Vec<u8>) -> CommandRead<Cursor<Vec<u8>>> {
         let (sender, _receiver) = mpsc::channel(128);
         let hash = String::from("hash");
-        let cmd_sender = Arc::new(CmdSender { hash, sender });
+        let cmd_sender = Arc::new(CommandSender { hash, sender });
         let (r,_w) = tokio::io::split(Cursor::new(buf));
         CommandRead::new(r, cmd_sender)
     }

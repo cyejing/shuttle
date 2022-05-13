@@ -12,7 +12,7 @@ use tokio_rustls::TlsAcceptor;
 
 use crate::read_exact;
 use crate::config::Addr;
-use crate::rathole::session::{CmdSender, CommandRead, CommandWrite};
+use crate::rathole::session::{CommandSender, CommandRead, CommandWrite};
 use crate::socks::ByteAddr;
 use crate::store::ServerStore;
 use crate::tls::make_tls_acceptor;
@@ -229,7 +229,7 @@ impl ServerHandler {
     async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin + Send>(&mut self, stream: &mut T) -> crate::Result<()> {
         let (sender, receiver) = mpsc::channel(128);
         let hash = self.hash.clone().expect("rathole hash empty!");
-        let cmd_sender = Arc::new(CmdSender { hash, sender });
+        let cmd_sender = Arc::new(CommandSender { hash, sender });
         self.store.set_sender(cmd_sender.clone());
 
         let (read, write) = io::split(stream);
