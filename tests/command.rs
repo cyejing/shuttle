@@ -20,7 +20,7 @@ async fn test_ping()  {
     w.write_frame(&frame).await.unwrap();
 
     let resp = r.read_frame().await.unwrap();
-    println!("{}", resp);
+    assert_eq!(format!("{}", resp), "[resp, hi]");
 
 }
 
