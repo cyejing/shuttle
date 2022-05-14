@@ -1,9 +1,9 @@
 use bytes::{Buf, Bytes};
 use std::convert::TryInto;
-use std::fmt;
 use std::io::Cursor;
 use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
+use std::{fmt, str, vec};
 
 #[derive(Clone, Debug)]
 pub enum Frame {
@@ -22,11 +22,30 @@ pub enum Error {
     Other(crate::Error),
 }
 
-#[allow(dead_code)]
-impl Frame {
+#[derive(Debug)]
+pub struct Parse {
+    parts: vec::IntoIter<Frame>,
+}
 
+#[derive(Debug)]
+pub enum ParseError {
+    EndOfStream,
+
+    Other(crate::Error),
+}
+
+impl Frame {
     pub(crate) fn array() -> Frame {
         Frame::Array(vec![])
+    }
+
+    pub(crate) fn push_frame(&mut self, frame: Frame) {
+        match self {
+            Frame::Array(vec) => {
+                vec.push(frame);
+            }
+            _ => panic!("not an array frame"),
+        }
     }
 
     pub(crate) fn push_bulk(&mut self, bytes: Bytes) {
@@ -38,6 +57,7 @@ impl Frame {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn push_int(&mut self, value: u64) {
         match self {
             Frame::Array(vec) => {
@@ -45,6 +65,17 @@ impl Frame {
             }
             _ => panic!("not an array frame"),
         }
+    }
+
+    pub(crate) fn push_req_id(self, req_id: u64) -> Frame {
+        let nf = match self {
+            Frame::Array(mut vec) => {
+                vec.push(Frame::Integer(req_id));
+                Frame::Array(vec)
+            }
+            _ => panic!("not an array frame"),
+        };
+        nf
     }
 
     /// Checks if an entire message can be decoded from `src`
@@ -151,12 +182,77 @@ impl Frame {
         }
     }
 
-    /// Converts the frame to an "unexpected frame" error
+    #[allow(dead_code)]
     pub(crate) fn to_error(&self) -> crate::Error {
         format!("unexpected frame: {}", self).into()
     }
 }
 
+impl Parse {
+    pub(crate) fn new(frame: Frame) -> Result<Parse, ParseError> {
+        let array = match frame {
+            Frame::Array(array) => array,
+            frame => return Err(format!("protocol error; expected array, got {:?}", frame).into()),
+        };
+
+        Ok(Parse {
+            parts: array.into_iter(),
+        })
+    }
+
+    pub fn next_part(&mut self) -> Result<Frame, ParseError> {
+        self.parts.next().ok_or(ParseError::EndOfStream)
+    }
+
+    pub(crate) fn next_string(&mut self) -> Result<String, ParseError> {
+        match self.next_part()? {
+            Frame::Simple(s) => Ok(s),
+            Frame::Bulk(data) => str::from_utf8(&data[..])
+                .map(|s| s.to_string())
+                .map_err(|_| "protocol error; invalid string".into()),
+            frame => Err(format!(
+                "protocol error; expected simple frame or bulk frame, got {:?}",
+                frame
+            )
+            .into()),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn next_bytes(&mut self) -> Result<Bytes, ParseError> {
+        match self.next_part()? {
+            Frame::Simple(s) => Ok(Bytes::from(s.into_bytes())),
+            Frame::Bulk(data) => Ok(data),
+            frame => Err(format!(
+                "protocol error; expected simple frame or bulk frame, got {:?}",
+                frame
+            )
+            .into()),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn next_int(&mut self) -> Result<u64, ParseError> {
+        use atoi::atoi;
+
+        const MSG: &str = "protocol error; invalid number";
+
+        match self.next_part()? {
+            Frame::Integer(v) => Ok(v),
+            Frame::Simple(data) => atoi::<u64>(data.as_bytes()).ok_or_else(|| MSG.into()),
+            Frame::Bulk(data) => atoi::<u64>(&data).ok_or_else(|| MSG.into()),
+            frame => Err(format!("protocol error; expected int frame but got {:?}", frame).into()),
+        }
+    }
+
+    pub(crate) fn finish(&mut self) -> Result<(), ParseError> {
+        if self.parts.next().is_none() {
+            Ok(())
+        } else {
+            Err("protocol error; expected end of frame, but there was more".into())
+        }
+    }
+}
 
 impl PartialEq<&str> for Frame {
     fn eq(&self, other: &&str) -> bool {
@@ -170,8 +266,6 @@ impl PartialEq<&str> for Frame {
 
 impl fmt::Display for Frame {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use std::str;
-
         match self {
             Frame::Simple(response) => response.fmt(fmt),
             Frame::Error(msg) => write!(fmt, "error: {}", msg),
@@ -182,12 +276,14 @@ impl fmt::Display for Frame {
             },
             Frame::Null => "(nil)".fmt(fmt),
             Frame::Array(parts) => {
+                write!(fmt, "[")?;
                 for (i, part) in parts.iter().enumerate() {
-                    if i > 0 {
-                        write!(fmt, " ")?;
-                        part.fmt(fmt)?;
+                    if i != 0 {
+                        write!(fmt, ", ")?;
                     }
+                    part.fmt(fmt)?;
                 }
+                write!(fmt, "]")?;
 
                 Ok(())
             }
@@ -283,3 +379,26 @@ impl fmt::Display for Error {
         }
     }
 }
+
+impl From<String> for ParseError {
+    fn from(src: String) -> ParseError {
+        ParseError::Other(src.into())
+    }
+}
+
+impl From<&str> for ParseError {
+    fn from(src: &str) -> ParseError {
+        src.to_string().into()
+    }
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParseError::EndOfStream => "protocol error; unexpected end of stream".fmt(f),
+            ParseError::Other(err) => err.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for ParseError {}

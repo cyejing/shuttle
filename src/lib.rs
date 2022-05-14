@@ -1,58 +1,65 @@
 extern crate core;
 
+pub mod common;
 pub mod config;
-pub mod store;
+pub mod rathole;
 pub mod server;
 pub mod socks;
-pub mod common;
-pub mod rathole;
+pub mod store;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub mod logs{
-    use tracing_subscriber::{EnvFilter, fmt};
+pub mod logs {
+    use std::mem::forget;
+
+    use tracing_appender::{non_blocking, rolling};
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::{fmt, EnvFilter};
 
     pub fn init_log() {
-        let env_filter = EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into());
+        let env_filter = EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into());
         // 输出到控制台中
-        let formatting_layer = fmt::layer()
+        let stdout_layer = fmt::layer()
             .with_thread_ids(true)
             .with_writer(std::io::stdout);
 
         // 输出到文件中
-        let file_appender = tracing_appender::rolling::never("logs", "shuttle.log");
-        // let (non_blocking_appender, _guard) = tracing_appender::non_blocking(file_appender);
+        let (file_appender, guard) = non_blocking(rolling::never("logs", "shuttle.log"));
         let file_layer = fmt::layer()
             .with_ansi(false)
+            .with_line_number(true)
             .with_writer(file_appender);
-
 
         tracing_subscriber::registry()
             .with(env_filter)
-            .with(formatting_layer)
+            .with(stdout_layer)
             .with(file_layer)
             .init();
+
+        forget(guard)
     }
 }
 
-pub mod tls{
+pub mod tls {
     use std::sync::Arc;
 
     use tokio_rustls::rustls;
     use tokio_rustls::rustls::{Certificate, OwnedTrustAnchor, PrivateKey};
 
-    pub fn make_tls_acceptor(certs: Vec<Certificate>,key: PrivateKey) -> tokio_rustls::TlsAcceptor{
+    pub fn make_tls_acceptor(
+        certs: Vec<Certificate>,
+        key: PrivateKey,
+    ) -> tokio_rustls::TlsAcceptor {
         let config = rustls::ServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(certs, key)
             .expect("bad certificates/private key");
 
-    tokio_rustls::TlsAcceptor::from(Arc::new(config))
+        tokio_rustls::TlsAcceptor::from(Arc::new(config))
     }
 
     pub fn make_tls_connector() -> tokio_rustls::TlsConnector {
@@ -73,7 +80,7 @@ pub mod tls{
         tokio_rustls::TlsConnector::from(Arc::new(config))
     }
 
-    pub fn make_server_name(domain: &str) -> crate::Result<rustls::ServerName>{
+    pub fn make_server_name(domain: &str) -> crate::Result<rustls::ServerName> {
         rustls::ServerName::try_from(domain)
             .map_err(|e| format!("try from domain [{}] to server name err : {}", &domain, e).into())
     }

@@ -1,4 +1,3 @@
-
 pub const CRLF: [u8; 2] = [0x0d, 0x0a];
 
 #[rustfmt::skip]
@@ -28,5 +27,3 @@ pub mod socks_consts {
     pub const SOCKS5_REPLY_COMMAND_NOT_SUPPORTED:      u8 = 0x07;
     pub const SOCKS5_REPLY_ADDRESS_TYPE_NOT_SUPPORTED: u8 = 0x08;
 }
-
-
