@@ -1,14 +1,14 @@
 use std::rc::Rc;
 
-use shuttle::config::{ServerConfig};
-use shuttle::logs::init_log;
-use shuttle::server::{start_server};
 use clap::Parser;
+use shuttle::config::ServerConfig;
+use shuttle::logs::init_log;
+use shuttle::server::start_server;
 use shuttle::store::ServerStore;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
-struct Args{
+struct Args {
     /// Config Path
     #[clap(short, long)]
     config_path: Option<String>,

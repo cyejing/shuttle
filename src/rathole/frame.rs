@@ -1,9 +1,9 @@
 use bytes::{Buf, Bytes};
 use std::convert::TryInto;
-use std::{fmt, str, vec};
 use std::io::Cursor;
 use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
+use std::{fmt, str, vec};
 
 #[derive(Clone, Debug)]
 pub enum Frame {
@@ -36,12 +36,11 @@ pub enum ParseError {
 
 #[allow(dead_code)]
 impl Frame {
-
     pub(crate) fn array() -> Frame {
         Frame::Array(vec![])
     }
 
-    pub(crate) fn push_bulk(&mut self, bytes: Bytes){
+    pub(crate) fn push_bulk(&mut self, bytes: Bytes) {
         match self {
             Frame::Array(vec) => {
                 vec.push(Frame::Bulk(bytes));
@@ -50,7 +49,7 @@ impl Frame {
         }
     }
 
-    pub(crate) fn push_int(&mut self, value: u64){
+    pub(crate) fn push_int(&mut self, value: u64) {
         match self {
             Frame::Array(vec) => {
                 vec.push(Frame::Integer(value));
@@ -169,7 +168,6 @@ impl Frame {
     }
 }
 
-
 #[allow(dead_code)]
 impl Parse {
     pub(crate) fn new(frame: Frame) -> Result<Parse, ParseError> {
@@ -189,7 +187,6 @@ impl Parse {
 
     pub(crate) fn next_string(&mut self) -> Result<String, ParseError> {
         match self.next()? {
-
             Frame::Simple(s) => Ok(s),
             Frame::Bulk(data) => str::from_utf8(&data[..])
                 .map(|s| s.to_string())
@@ -198,20 +195,19 @@ impl Parse {
                 "protocol error; expected simple frame or bulk frame, got {:?}",
                 frame
             )
-                .into()),
+            .into()),
         }
     }
 
     pub(crate) fn next_bytes(&mut self) -> Result<Bytes, ParseError> {
         match self.next()? {
-
             Frame::Simple(s) => Ok(Bytes::from(s.into_bytes())),
             Frame::Bulk(data) => Ok(data),
             frame => Err(format!(
                 "protocol error; expected simple frame or bulk frame, got {:?}",
                 frame
             )
-                .into()),
+            .into()),
         }
     }
 
@@ -249,7 +245,6 @@ impl PartialEq<&str> for Frame {
 
 impl fmt::Display for Frame {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-
         match self {
             Frame::Simple(response) => response.fmt(fmt),
             Frame::Error(msg) => write!(fmt, "error: {}", msg),
@@ -262,7 +257,7 @@ impl fmt::Display for Frame {
             Frame::Array(parts) => {
                 write!(fmt, "[")?;
                 for (i, part) in parts.iter().enumerate() {
-                    if i!=0{
+                    if i != 0 {
                         write!(fmt, ", ")?;
                     }
                     part.fmt(fmt)?;
@@ -363,7 +358,6 @@ impl fmt::Display for Error {
         }
     }
 }
-
 
 impl From<String> for ParseError {
     fn from(src: String) -> ParseError {

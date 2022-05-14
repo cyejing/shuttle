@@ -1,6 +1,6 @@
+use log::info;
 use std::rc::Rc;
 use std::sync::Arc;
-use log::info;
 
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
@@ -8,9 +8,8 @@ use tokio::net::TcpListener;
 use shuttle::config::{ClientConfig, ServerConfig};
 use shuttle::logs::init_log;
 use shuttle::socks;
-use shuttle::socks::{TrojanDial};
+use shuttle::socks::TrojanDial;
 use shuttle::store::ServerStore;
-
 
 #[tokio::test]
 async fn test_socks() {
@@ -22,13 +21,18 @@ async fn test_socks() {
 
     let client = reqwest::Client::builder()
         .proxy(reqwest::Proxy::http("socks5://127.0.0.1:4080").unwrap())
-        .build().unwrap();
-    let resp = client.get("http://127.0.0.1:6080").send()
-        .await.unwrap()
+        .build()
+        .unwrap();
+    let resp = client
+        .get("http://127.0.0.1:6080")
+        .send()
+        .await
+        .unwrap()
         .text()
-        .await.unwrap();
+        .await
+        .unwrap();
     assert_eq!(resp, "Hello world!");
-    info!("assert eq {}",resp);
+    info!("assert eq {}", resp);
 }
 
 async fn start_server() {
@@ -43,9 +47,11 @@ async fn start_server() {
 async fn start_socks() {
     let cc = ClientConfig::load(Option::Some(String::from("tests/examples/shuttlec.yaml")));
 
-    let dial = Arc::new(TrojanDial::new(cc.remote_addr.clone(),
-                                        cc.hash.clone(),
-                                        cc.ssl_enable));
+    let dial = Arc::new(TrojanDial::new(
+        cc.remote_addr.clone(),
+        cc.hash.clone(),
+        cc.ssl_enable,
+    ));
     socks::start_socks(cc, dial).await;
 }
 
@@ -62,7 +68,9 @@ async fn start_web_server() {
                     Content-length: 12\r\n\
                     \r\n\
                     Hello world!"[..],
-            ).await.unwrap();
+            )
+            .await
+            .unwrap();
         }
     });
 }

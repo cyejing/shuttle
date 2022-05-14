@@ -2,13 +2,23 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 use bytes::{Buf, BytesMut};
-use log::{info};
+use log::info;
 use tokio::io;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf};
-use tokio::sync::{mpsc};
+use tokio::io::{
+    AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
+};
+use tokio::sync::mpsc;
 
 use crate::rathole::cmd::Command;
 use crate::rathole::frame::Frame;
+
+pub struct Dispatcher<T> {
+    command_read: CommandRead<T>,
+    command_write: CommandWrite<T>,
+
+    command_sender: Arc<CommandSender>,
+    receiver: mpsc::Receiver<Command>,
+}
 
 /// command sender
 #[derive(Debug, Clone)]
@@ -21,19 +31,66 @@ pub struct CommandSender {
 pub struct CommandRead<T> {
     read: ReadHalf<T>,
     buffer: BytesMut,
-    sender: Arc<CommandSender>,
 }
 
 /// command write
 pub struct CommandWrite<T> {
     write: BufWriter<WriteHalf<T>>,
-    receiver: mpsc::Receiver<Command>,
 }
 
+impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
+    pub fn new(stream: T, hash: String) -> Self {
+        let (sender, receiver) = mpsc::channel(128);
+        let command_sender = Arc::new(CommandSender::new(hash, sender));
+        let (read, write) = io::split(stream);
+        let command_read = CommandRead::new(read);
+        let command_write = CommandWrite::new(write);
+
+        Dispatcher {
+            command_sender,
+            command_read,
+            command_write,
+            receiver,
+        }
+    }
+
+    pub async fn dispatch(&mut self) -> crate::Result<()> {
+        loop {
+            tokio::select! {
+                r1 = Self::apply_command(&mut self.command_read, self.command_sender.clone()) => r1?,
+                r2 = Self::recv_command(&mut self.command_write, &mut self.receiver) =>  r2?,
+            }
+        }
+    }
+
+    async fn apply_command(
+        command_read: &mut CommandRead<T>,
+        command_sender: Arc<CommandSender>,
+    ) -> crate::Result<()> {
+        let cmd = command_read.read_command().await?;
+        let resp = cmd.apply()?;
+        command_sender.send(resp.unwrap()).await
+    }
+
+    async fn recv_command(
+        command_write: &mut CommandWrite<T>,
+        receiver: &mut mpsc::Receiver<Command>,
+    ) -> crate::Result<()> {
+        let oc = receiver.recv().await;
+        match oc {
+            Some(cmd) => command_write.write_command(cmd).await,
+            None => Err("cmd receiver close".into()),
+        }
+    }
+
+    pub fn get_command_sender(&self) -> Arc<CommandSender> {
+        self.command_sender.clone()
+    }
+}
 
 impl CommandSender {
-    pub fn new(hash: String, sender: mpsc::Sender<Command>) -> Self{
-        CommandSender{ hash, sender }
+    pub fn new(hash: String, sender: mpsc::Sender<Command>) -> Self {
+        CommandSender { hash, sender }
     }
 
     pub async fn send(&self, cmd: Command) -> crate::Result<()> {
@@ -42,24 +99,22 @@ impl CommandSender {
 }
 
 impl<T: AsyncRead> CommandRead<T> {
-    pub fn new(read: ReadHalf<T>, sender: Arc<CommandSender>) -> Self {
+    pub fn new(read: ReadHalf<T>) -> Self {
         CommandRead {
             read,
-            sender,
             buffer: BytesMut::new(),
         }
     }
 
-    pub async fn read_command(&mut self) -> crate::Result<()> {
+    pub async fn read_command(&mut self) -> crate::Result<Command> {
         let f = self.read_frame().await?;
         info!("frame : {}", f);
         let cmd = Command::from_frame(f)?;
         info!("cmd : {:?}", cmd);
-        cmd.apply(self.sender.clone()).await?;
-        Ok(())
+        Ok(cmd)
     }
 
-    pub async fn read_frame(&mut self) -> crate::Result<Frame> {
+    async fn read_frame(&mut self) -> crate::Result<Frame> {
         loop {
             if let Some(frame) = self.parse_frame()? {
                 return Ok(frame);
@@ -97,30 +152,22 @@ impl<T: AsyncRead> CommandRead<T> {
     }
 }
 
-
 impl<T: AsyncWrite> CommandWrite<T> {
-    pub fn new(write: WriteHalf<T>, receiver: mpsc::Receiver<Command>) -> Self {
+    pub fn new(write: WriteHalf<T>) -> Self {
         CommandWrite {
             write: BufWriter::new(write),
-            receiver,
         }
     }
 
-    pub async fn write_command(&mut self) -> crate::Result<()> {
-        let oc = self.receiver.recv().await;
-        match oc {
-            Some(cmd) => {
-                info!("recv cmd :{:?}", cmd);
-                let frame = Command::exec(cmd)?;
-                info!("write frame : {}", frame);
-                self.write_frame(&frame).await?;
-                Ok(())
-            }
-            None => Err("cmd receiver close".into()),
-        }
+    pub async fn write_command(&mut self, cmd: Command) -> crate::Result<()> {
+        info!("write cmd :{:?}", cmd);
+        let frame = Command::to_frame(cmd)?;
+        info!("write frame : {}", frame);
+        self.write_frame(&frame).await?;
+        Ok(())
     }
 
-    pub async fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
+    async fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
         match frame {
             Frame::Array(val) => {
                 self.write.write_u8(b'*').await?;
@@ -136,7 +183,6 @@ impl<T: AsyncWrite> CommandWrite<T> {
 
         self.write.flush().await
     }
-
 
     /// Write a frame literal to the stream
     async fn write_value(&mut self, frame: &Frame) -> io::Result<()> {
@@ -191,28 +237,22 @@ impl<T: AsyncWrite> CommandWrite<T> {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
-    use std::io::{Cursor};
-    use std::sync::Arc;
+    use std::io::Cursor;
 
     use bytes::Bytes;
-    use tokio::sync::mpsc;
 
     use crate::common::consts;
-    use crate::rathole::session::{CommandSender, CommandRead, CommandWrite};
+    use crate::rathole::dispatcher::{CommandRead, CommandWrite};
     use crate::rathole::frame::Frame;
 
     fn new_command_read(buf: Vec<u8>) -> CommandRead<Cursor<Vec<u8>>> {
-        let (sender, _receiver) = mpsc::channel(128);
-        let hash = String::from("hash");
-        let cmd_sender = Arc::new(CommandSender { hash, sender });
-        let (r,_w) = tokio::io::split(Cursor::new(buf));
-        CommandRead::new(r, cmd_sender)
+        let (r, _w) = tokio::io::split(Cursor::new(buf));
+        CommandRead::new(r)
     }
 
-    fn new_command_write(buf: &mut Vec<u8>) -> CommandWrite<Cursor<&mut Vec<u8>>>{
-        let (_sender, receiver) = mpsc::channel(128);
-        let (_r,w) = tokio::io::split(Cursor::new(buf));
-        CommandWrite::new(w, receiver)
+    fn new_command_write(buf: &mut Vec<u8>) -> CommandWrite<Cursor<&mut Vec<u8>>> {
+        let (_r, w) = tokio::io::split(Cursor::new(buf));
+        CommandWrite::new(w)
     }
 
     #[tokio::test]
@@ -233,9 +273,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_write_frame_array() {
-        let frame = Frame::Array(vec![Frame::Simple("hello".to_string()),
-                                      Frame::Integer(2),
-                                      Frame::Bulk(Bytes::from(vec![0x01, 0x02]))]);
+        let frame = Frame::Array(vec![
+            Frame::Simple("hello".to_string()),
+            Frame::Integer(2),
+            Frame::Bulk(Bytes::from(vec![0x01, 0x02])),
+        ]);
 
         let mut cell = RefCell::new(Vec::new());
         let mut command_write = new_command_write(cell.get_mut());
@@ -249,7 +291,6 @@ mod tests {
 
         assert_eq!(format!("{:?}", frame), format!("{:?}", f))
     }
-
 
     #[tokio::test]
     async fn test_read_frame() {

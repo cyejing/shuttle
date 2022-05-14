@@ -1,25 +1,20 @@
-use std::sync::Arc;
-use async_trait::async_trait;
-use crate::rathole::cmd::{Command, CommandApply};
 use crate::rathole::cmd::resp::Resp;
-use crate::rathole::session::CommandSender;
+use crate::rathole::cmd::CommandApply;
 
 #[derive(Debug)]
 pub struct Unknown {
     command_name: String,
 }
 
-impl Unknown{
+impl Unknown {
     pub fn new(command_name: String) -> Unknown {
         Unknown { command_name }
     }
 }
 
-
-#[async_trait]
-impl CommandApply for Unknown{
-    async fn apply(&self, sender: Arc<CommandSender>) -> crate::Result<()> {
+impl CommandApply for Unknown {
+    fn apply(&self) -> crate::Result<Option<Resp>> {
         let resp = Resp::new(format!("ERR unknown command '{}'", self.command_name));
-        sender.send(Command::Resp(resp)).await
+        Ok(Some(resp))
     }
 }

@@ -69,7 +69,6 @@ pub struct Hole {
     pub local_addr: String,
 }
 
-
 const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["shuttles.yaml", "examples/shuttles.yaml"];
 
 impl ServerConfig {
@@ -86,10 +85,14 @@ impl ServerConfig {
             }
         }
         for password in &sc.trojan.passwords {
-            sc.trojan.password_hash.insert(sha224(password), password.clone());
+            sc.trojan
+                .password_hash
+                .insert(sha224(password), password.clone());
         }
         for password in &sc.rathole.passwords {
-            sc.rathole.password_hash.insert(sha224(password), password.clone());
+            sc.rathole
+                .password_hash
+                .insert(sha224(password), password.clone());
         }
         sc
     }
@@ -110,8 +113,7 @@ impl ClientConfig {
 
 fn open_config_file(file_op: Option<String>, default_paths: Vec<&str>) -> File {
     if let Some(file_path) = file_op {
-        File::open(&file_path)
-            .unwrap_or_else(|e| panic!("open file [{}] failed {}", &file_path, e))
+        File::open(&file_path).unwrap_or_else(|e| panic!("open file [{}] failed {}", &file_path, e))
     } else {
         let mut of: Option<File> = Option::None;
         for path in default_paths {
@@ -119,7 +121,7 @@ fn open_config_file(file_op: Option<String>, default_paths: Vec<&str>) -> File {
                 of = Option::Some(file);
                 break;
             }
-        };
+        }
         of.expect("Can't find the default config file ./shuttles.yaml or ./shuttlec.yaml")
     }
 }
@@ -130,14 +132,13 @@ fn sha224(password: &String) -> String {
     encoder.input(password.as_bytes());
     let result = encoder.result_str();
     log::debug!(
-            "sha224({}) = {}, length = {}",
-            password,
-            result,
-            result.len()
-        );
+        "sha224({}) = {}, length = {}",
+        password,
+        result,
+        result.len()
+    );
     result
 }
-
 
 pub fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
     let certfile = File::open(filename).expect("cannot open certificate file");
@@ -168,7 +169,7 @@ pub fn load_private_key(filename: &str) -> rustls::PrivateKey {
     );
 }
 
-fn default_true() -> bool{
+fn default_true() -> bool {
     true
 }
 

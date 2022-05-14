@@ -1,4 +1,3 @@
-
 #[macro_export]
 macro_rules! read_exact {
     ($stream: expr, $array: expr) => {{
