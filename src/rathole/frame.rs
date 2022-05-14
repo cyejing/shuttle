@@ -34,10 +34,18 @@ pub enum ParseError {
     Other(crate::Error),
 }
 
-#[allow(dead_code)]
 impl Frame {
     pub(crate) fn array() -> Frame {
         Frame::Array(vec![])
+    }
+
+    pub(crate) fn push_frame(&mut self, frame: Frame) {
+        match self {
+            Frame::Array(vec) => {
+                vec.push(frame);
+            }
+            _ => panic!("not an array frame"),
+        }
     }
 
     pub(crate) fn push_bulk(&mut self, bytes: Bytes) {
@@ -49,6 +57,7 @@ impl Frame {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn push_int(&mut self, value: u64) {
         match self {
             Frame::Array(vec) => {
@@ -56,6 +65,17 @@ impl Frame {
             }
             _ => panic!("not an array frame"),
         }
+    }
+
+    pub(crate) fn push_req_id(self, req_id: u64) -> Frame {
+        let nf = match self {
+            Frame::Array(mut vec) => {
+                vec.push(Frame::Integer(req_id));
+                Frame::Array(vec)
+            }
+            _ => panic!("not an array frame"),
+        };
+        nf
     }
 
     /// Checks if an entire message can be decoded from `src`
@@ -162,13 +182,12 @@ impl Frame {
         }
     }
 
-    /// Converts the frame to an "unexpected frame" error
+    #[allow(dead_code)]
     pub(crate) fn to_error(&self) -> crate::Error {
         format!("unexpected frame: {}", self).into()
     }
 }
 
-#[allow(dead_code)]
 impl Parse {
     pub(crate) fn new(frame: Frame) -> Result<Parse, ParseError> {
         let array = match frame {
@@ -181,12 +200,12 @@ impl Parse {
         })
     }
 
-    fn next(&mut self) -> Result<Frame, ParseError> {
+    pub fn next_part(&mut self) -> Result<Frame, ParseError> {
         self.parts.next().ok_or(ParseError::EndOfStream)
     }
 
     pub(crate) fn next_string(&mut self) -> Result<String, ParseError> {
-        match self.next()? {
+        match self.next_part()? {
             Frame::Simple(s) => Ok(s),
             Frame::Bulk(data) => str::from_utf8(&data[..])
                 .map(|s| s.to_string())
@@ -199,8 +218,9 @@ impl Parse {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn next_bytes(&mut self) -> Result<Bytes, ParseError> {
-        match self.next()? {
+        match self.next_part()? {
             Frame::Simple(s) => Ok(Bytes::from(s.into_bytes())),
             Frame::Bulk(data) => Ok(data),
             frame => Err(format!(
@@ -211,12 +231,13 @@ impl Parse {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn next_int(&mut self) -> Result<u64, ParseError> {
         use atoi::atoi;
 
         const MSG: &str = "protocol error; invalid number";
 
-        match self.next()? {
+        match self.next_part()? {
             Frame::Integer(v) => Ok(v),
             Frame::Simple(data) => atoi::<u64>(data.as_bytes()).ok_or_else(|| MSG.into()),
             Frame::Bulk(data) => atoi::<u64>(&data).ok_or_else(|| MSG.into()),

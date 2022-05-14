@@ -1,6 +1,7 @@
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
 use crate::rathole::frame::{Frame, Parse, ParseError};
+use crate::store::ServerStore;
 use bytes::Bytes;
 
 #[derive(Debug, Default)]
@@ -9,6 +10,8 @@ pub struct Ping {
 }
 
 impl Ping {
+    pub const COMMAND_NAME: &'static str = "ping";
+
     pub fn new(msg: Option<String>) -> Ping {
         Ping { msg }
     }
@@ -24,23 +27,23 @@ impl CommandParse<Ping> for Ping {
     }
 }
 
-impl CommandApply for Ping {
-    fn apply(&self) -> crate::Result<Option<Resp>> {
-        let resp = match self.msg.clone() {
-            None => Resp::new("PONG".to_string()),
-            Some(msg) => Resp::new(msg),
-        };
-        Ok(Some(resp))
-    }
-}
-
 impl CommandTo for Ping {
     fn to_frame(&self) -> crate::Result<Frame> {
         let mut f = Frame::array();
-        f.push_bulk(Bytes::from("ping"));
+        f.push_bulk(Bytes::from(Ping::COMMAND_NAME));
         if self.msg.is_some() {
             f.push_bulk(Bytes::from(self.msg.clone().unwrap()));
         }
         Ok(f)
+    }
+}
+
+impl CommandApply for Ping {
+    fn apply(&self, _store: ServerStore) -> crate::Result<Option<Resp>> {
+        let resp = match self.msg.clone() {
+            None => Resp::Ok("PONG".to_string()),
+            Some(msg) => Resp::Ok(msg),
+        };
+        Ok(Some(resp))
     }
 }

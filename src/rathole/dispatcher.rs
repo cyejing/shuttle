@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use std::sync::Arc;
 
-use bytes::{Buf, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use log::info;
 use tokio::io;
 use tokio::io::{
@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 
 use crate::rathole::cmd::Command;
 use crate::rathole::frame::Frame;
+use crate::store::ServerStore;
 
 pub struct Dispatcher<T> {
     command_read: CommandRead<T>,
@@ -18,6 +19,9 @@ pub struct Dispatcher<T> {
 
     command_sender: Arc<CommandSender>,
     receiver: mpsc::Receiver<Command>,
+
+    store: ServerStore,
+    req_id_adder: ReqIdAdder,
 }
 
 /// command sender
@@ -25,6 +29,12 @@ pub struct Dispatcher<T> {
 pub struct CommandSender {
     pub hash: String,
     pub sender: mpsc::Sender<Command>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConnSender {
+    pub conn_id: String,
+    pub sender: mpsc::Sender<Bytes>,
 }
 
 /// command read
@@ -39,7 +49,7 @@ pub struct CommandWrite<T> {
 }
 
 impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
-    pub fn new(stream: T, hash: String) -> Self {
+    pub fn new(stream: T, hash: String, store: ServerStore) -> Self {
         let (sender, receiver) = mpsc::channel(128);
         let command_sender = Arc::new(CommandSender::new(hash, sender));
         let (read, write) = io::split(stream);
@@ -51,14 +61,28 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
             command_read,
             command_write,
             receiver,
+            store,
+            req_id_adder: ReqIdAdder::new(),
         }
     }
 
     pub async fn dispatch(&mut self) -> crate::Result<()> {
         loop {
             tokio::select! {
-                r1 = Self::apply_command(&mut self.command_read, self.command_sender.clone()) => r1?,
-                r2 = Self::recv_command(&mut self.command_write, &mut self.receiver) =>  r2?,
+                r1 = Self::apply_command(
+                    &mut self.command_read,
+                    self.command_sender.clone(),
+                    self.store.clone()
+                ) => {
+                    r1?
+                },
+                r2 = Self::recv_command(
+                    &mut self.command_write,
+                    &mut self.receiver,
+                    &mut self.req_id_adder,
+                ) => {
+                    r2?
+                },
             }
         }
     }
@@ -66,19 +90,32 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
     async fn apply_command(
         command_read: &mut CommandRead<T>,
         command_sender: Arc<CommandSender>,
+        store: ServerStore,
     ) -> crate::Result<()> {
-        let cmd = command_read.read_command().await?;
-        let resp = cmd.apply()?;
-        command_sender.send(resp.unwrap()).await
+        let (req_id, cmd) = command_read.read_command().await?;
+        let resp = cmd.apply(store)?;
+        if resp.is_some() {
+            let resp_id = if let Some(Command::Resp(resp)) = resp {
+                Command::RespId(req_id, resp)
+            } else {
+                panic!("expect resp command");
+            };
+            command_sender.send(resp_id).await?
+        }
+        Ok(())
     }
 
     async fn recv_command(
         command_write: &mut CommandWrite<T>,
         receiver: &mut mpsc::Receiver<Command>,
+        req_id_adder: &mut ReqIdAdder,
     ) -> crate::Result<()> {
         let oc = receiver.recv().await;
         match oc {
-            Some(cmd) => command_write.write_command(cmd).await,
+            Some(cmd) => {
+                let req_id = req_id_adder.get_req_id();
+                command_write.write_command(req_id, cmd).await
+            }
             None => Err("cmd receiver close".into()),
         }
     }
@@ -98,6 +135,16 @@ impl CommandSender {
     }
 }
 
+impl ConnSender {
+    pub fn new(conn_id: String, sender: mpsc::Sender<Bytes>) -> Self {
+        ConnSender { conn_id, sender }
+    }
+
+    pub async fn send(&self, byte: Bytes) -> crate::Result<()> {
+        Ok(self.sender.send(byte).await?)
+    }
+}
+
 impl<T: AsyncRead> CommandRead<T> {
     pub fn new(read: ReadHalf<T>) -> Self {
         CommandRead {
@@ -106,12 +153,12 @@ impl<T: AsyncRead> CommandRead<T> {
         }
     }
 
-    pub async fn read_command(&mut self) -> crate::Result<Command> {
+    pub async fn read_command(&mut self) -> crate::Result<(u64, Command)> {
         let f = self.read_frame().await?;
         info!("frame : {}", f);
-        let cmd = Command::from_frame(f)?;
+        let (req_id, cmd) = Command::from_frame(f)?;
         info!("cmd : {:?}", cmd);
-        Ok(cmd)
+        Ok((req_id, cmd))
     }
 
     async fn read_frame(&mut self) -> crate::Result<Frame> {
@@ -159,9 +206,10 @@ impl<T: AsyncWrite> CommandWrite<T> {
         }
     }
 
-    pub async fn write_command(&mut self, cmd: Command) -> crate::Result<()> {
+    pub async fn write_command(&mut self, req_id: u64, cmd: Command) -> crate::Result<()> {
         info!("write cmd :{:?}", cmd);
-        let frame = Command::to_frame(cmd)?;
+        let frame = cmd.to_frame(req_id)?;
+
         info!("write frame : {}", frame);
         self.write_frame(&frame).await?;
         Ok(())
@@ -231,6 +279,21 @@ impl<T: AsyncWrite> CommandWrite<T> {
         self.write.write_all(b"\r\n").await?;
 
         Ok(())
+    }
+}
+
+struct ReqIdAdder {
+    id_adder: u64,
+}
+
+impl ReqIdAdder {
+    pub fn new() -> Self {
+        ReqIdAdder { id_adder: 0 }
+    }
+
+    pub fn get_req_id(&mut self) -> u64 {
+        self.id_adder += 1;
+        self.id_adder
     }
 }
 

@@ -249,9 +249,12 @@ impl ServerHandler {
         &mut self,
         stream: &mut T,
     ) -> crate::Result<()> {
-        let mut dispatcher =
-            Dispatcher::new(stream, self.hash.clone().expect("rathole hash empty!"));
-        self.store.set_sender(dispatcher.get_command_sender());
+        let mut dispatcher = Dispatcher::new(
+            stream,
+            self.hash.clone().expect("rathole hash empty!"),
+            self.store.clone(),
+        );
+        self.store.set_cmd_sender(dispatcher.get_command_sender());
         dispatcher.dispatch().await
     }
 }

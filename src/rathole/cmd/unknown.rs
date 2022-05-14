@@ -1,5 +1,6 @@
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::CommandApply;
+use crate::store::ServerStore;
 
 #[derive(Debug)]
 pub struct Unknown {
@@ -13,8 +14,8 @@ impl Unknown {
 }
 
 impl CommandApply for Unknown {
-    fn apply(&self) -> crate::Result<Option<Resp>> {
-        let resp = Resp::new(format!("ERR unknown command '{}'", self.command_name));
+    fn apply(&self, _store: ServerStore) -> crate::Result<Option<Resp>> {
+        let resp = Resp::Err(format!("ERR unknown command '{}'", self.command_name));
         Ok(Some(resp))
     }
 }

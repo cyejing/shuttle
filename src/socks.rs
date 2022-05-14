@@ -253,7 +253,6 @@ impl Display for ByteAddr {
 }
 
 impl ByteAddr {
-    #[allow(dead_code)]
     pub(crate) async fn to_socket_addr(&self) -> crate::Result<SocketAddr> {
         match self {
             ByteAddr::V4(_, _, ip, port) => {
