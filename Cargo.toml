@@ -11,7 +11,7 @@ bytes = "1.1"
 
 log = { version = "0.4", features = ["release_max_level_debug", "max_level_trace"] }
 tracing = "0.1"
-tracing-subscriber = { version="0.3", features = ["local-time", "env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["local-time", "env-filter"] }
 tracing-appender = "0.2"
 
 tokio-rustls = "0.23"
@@ -20,12 +20,14 @@ webpki-roots = "0.22.3"
 
 async-trait = "0.1"
 
-serde = {version="1.0", features=["derive"]}
+serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
 rust-crypto = "0.2"
 clap = { version = "3.1", features = ["derive"] }
 atoi = "1"
 pretty-hex = "0.3.0"
+
+uuid = { version = "1", features = ["v4", "fast-rng"] }
 
 
 [dev-dependencies]

@@ -1,7 +1,8 @@
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
+use crate::rathole::dispatcher::Context;
 use crate::rathole::frame::{Frame, Parse};
-use crate::store::ServerStore;
+use async_trait::async_trait;
 use bytes::Bytes;
 use log::error;
 
@@ -33,15 +34,14 @@ impl CommandTo for Dial {
     }
 }
 
+#[async_trait]
 impl CommandApply for Dial {
-    fn apply(&self, _store: ServerStore) -> crate::Result<Option<Resp>> {
+    async fn apply(&self, _context: Context) -> crate::Result<Option<Resp>> {
         let dial_conn = DialConn::new(self.addr.clone());
-        tokio::spawn(async move {
-            if let Err(err) = dial_conn.start().await {
-                error!("dial conn err : {:?}", err);
-            }
-        });
-        Ok(None)
+        if let Err(err) = dial_conn.start().await {
+            error!("dial conn err : {:?}", err);
+        }
+        Ok(Some(Resp::Ok("ok".to_string())))
     }
 }
 

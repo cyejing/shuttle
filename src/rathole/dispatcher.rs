@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
 
@@ -7,7 +8,7 @@ use tokio::io;
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
 
 use crate::rathole::cmd::Command;
 use crate::rathole::frame::Frame;
@@ -17,24 +18,34 @@ pub struct Dispatcher<T> {
     command_read: CommandRead<T>,
     command_write: CommandWrite<T>,
 
-    command_sender: Arc<CommandSender>,
-    receiver: mpsc::Receiver<Command>,
+    context: Context,
+    receiver: mpsc::Receiver<CommandChannel>,
 
-    store: ServerStore,
     req_id_adder: ReqIdAdder,
 }
+
+type ReqChannel = Option<oneshot::Sender<crate::Result<()>>>;
+type CommandChannel = (Command, ReqChannel);
 
 /// command sender
 #[derive(Debug, Clone)]
 pub struct CommandSender {
     pub hash: String,
-    pub sender: mpsc::Sender<Command>,
+    pub sender: mpsc::Sender<CommandChannel>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ConnSender {
     pub conn_id: String,
     pub sender: mpsc::Sender<Bytes>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Context {
+    pub command_sender: Arc<CommandSender>,
+    pub conn_map: Arc<RwLock<HashMap<String, Arc<ConnSender>>>>,
+    pub req_map: Arc<Mutex<HashMap<u64, ReqChannel>>>,
+    pub req_id: Option<u64>,
 }
 
 /// command read
@@ -49,19 +60,19 @@ pub struct CommandWrite<T> {
 }
 
 impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
-    pub fn new(stream: T, hash: String, store: ServerStore) -> Self {
+    pub fn new(stream: T, hash: String, _store: ServerStore) -> Self {
         let (sender, receiver) = mpsc::channel(128);
         let command_sender = Arc::new(CommandSender::new(hash, sender));
+        let context = Context::new(command_sender);
         let (read, write) = io::split(stream);
         let command_read = CommandRead::new(read);
         let command_write = CommandWrite::new(write);
 
         Dispatcher {
-            command_sender,
+            context,
             command_read,
             command_write,
             receiver,
-            store,
             req_id_adder: ReqIdAdder::new(),
         }
     }
@@ -71,14 +82,14 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
             tokio::select! {
                 r1 = Self::apply_command(
                     &mut self.command_read,
-                    self.command_sender.clone(),
-                    self.store.clone()
+                    self.context.clone(),
                 ) => {
                     r1?
                 },
                 r2 = Self::recv_command(
                     &mut self.command_write,
                     &mut self.receiver,
+                    self.context.clone(),
                     &mut self.req_id_adder,
                 ) => {
                     r2?
@@ -89,31 +100,36 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
 
     async fn apply_command(
         command_read: &mut CommandRead<T>,
-        command_sender: Arc<CommandSender>,
-        store: ServerStore,
+        context: Context,
     ) -> crate::Result<()> {
+        let mut nc = context.clone();
         let (req_id, cmd) = command_read.read_command().await?;
-        let resp = cmd.apply(store)?;
+        nc.with_req_id(req_id);
+        let resp = cmd.apply(nc).await?;
+
         if resp.is_some() {
             let resp_id = if let Some(Command::Resp(resp)) = resp {
                 Command::RespId(req_id, resp)
             } else {
                 panic!("expect resp command");
             };
-            command_sender.send(resp_id).await?
+            context.command_sender.send(resp_id).await?
         }
         Ok(())
     }
 
     async fn recv_command(
         command_write: &mut CommandWrite<T>,
-        receiver: &mut mpsc::Receiver<Command>,
+        receiver: &mut mpsc::Receiver<CommandChannel>,
+        mut context: Context,
         req_id_adder: &mut ReqIdAdder,
     ) -> crate::Result<()> {
         let oc = receiver.recv().await;
         match oc {
-            Some(cmd) => {
+            Some((cmd, rc)) => {
                 let req_id = req_id_adder.get_req_id();
+                context.with_req_id(req_id);
+                context.set_req(rc).await;
                 command_write.write_command(req_id, cmd).await
             }
             None => Err("cmd receiver close".into()),
@@ -121,17 +137,64 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
     }
 
     pub fn get_command_sender(&self) -> Arc<CommandSender> {
-        self.command_sender.clone()
+        self.context.command_sender.clone()
+    }
+}
+
+impl Context {
+    pub fn new(command_sender: Arc<CommandSender>) -> Self {
+        Context {
+            command_sender,
+            req_id: None,
+            conn_map: Arc::new(RwLock::new(HashMap::new())),
+            req_map: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub(crate) fn with_req_id(&mut self, req_id: u64) {
+        self.req_id = Some(req_id);
+    }
+
+    pub(crate) async fn set_req(&self, req_channel: ReqChannel) {
+        if let Some(req_id) = self.req_id {
+            self.req_map.lock().await.insert(req_id, req_channel);
+        }
+    }
+
+    pub(crate) async fn get_req(&self) -> Option<ReqChannel> {
+        match self.req_id {
+            Some(req_id) => {
+                return self.req_map.lock().await.remove(&req_id);
+            }
+            None => None,
+        }
+    }
+
+    pub(crate) async fn set_conn_sender(&self, sender: Arc<ConnSender>) {
+        self.conn_map
+            .write()
+            .await
+            .insert(sender.conn_id.clone(), sender);
+    }
+
+    pub(crate) async fn get_conn_sender(&self, conn_id: &String) -> Option<Arc<ConnSender>> {
+        self.conn_map.read().await.get(conn_id).cloned()
     }
 }
 
 impl CommandSender {
-    pub fn new(hash: String, sender: mpsc::Sender<Command>) -> Self {
+    pub fn new(hash: String, sender: mpsc::Sender<CommandChannel>) -> Self {
         CommandSender { hash, sender }
     }
 
     pub async fn send(&self, cmd: Command) -> crate::Result<()> {
-        Ok(self.sender.send(cmd).await?)
+        Ok(self.sender.send((cmd, None)).await?)
+    }
+
+    pub async fn send_sync(&self, cmd: Command) -> crate::Result<()> {
+        let (tx, rx) = oneshot::channel();
+        self.sender.send((cmd, Some(tx))).await?;
+        rx.await?
     }
 }
 
@@ -300,38 +363,31 @@ impl ReqIdAdder {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
-    use std::io::Cursor;
+    use std::sync::Arc;
 
     use bytes::Bytes;
+    use tokio::sync::mpsc;
+    use uuid::Uuid;
 
-    use crate::common::consts;
-    use crate::rathole::dispatcher::{CommandRead, CommandWrite};
+    use crate::rathole::dispatcher::{CommandSender, ConnSender, Context};
     use crate::rathole::frame::Frame;
+    use crate::rathole::tests::{new_command_read, new_command_write};
 
-    fn new_command_read(buf: Vec<u8>) -> CommandRead<Cursor<Vec<u8>>> {
-        let (r, _w) = tokio::io::split(Cursor::new(buf));
-        CommandRead::new(r)
-    }
+    async fn frame_write_read(frame: &Frame) -> Frame {
+        let mut cell = RefCell::new(Vec::new());
+        let mut command_write = new_command_write(cell.get_mut());
+        command_write.write_frame(&frame).await.unwrap();
 
-    fn new_command_write(buf: &mut Vec<u8>) -> CommandWrite<Cursor<&mut Vec<u8>>> {
-        let (_r, w) = tokio::io::split(Cursor::new(buf));
-        CommandWrite::new(w)
+        let mut command_read = new_command_read(cell.get_mut());
+        let f = command_read.read_frame().await.unwrap();
+        f
     }
 
     #[tokio::test]
     async fn test_read_write_frame_simple() {
         let frame = Frame::Simple("hello".to_string());
-
-        let mut cell = RefCell::new(Vec::new());
-        let mut command_write = new_command_write(cell.get_mut());
-        command_write.write_frame(&frame).await.unwrap();
-        let read = cell.get_mut().as_slice().clone();
-        println!("{:?}", read);
-
-        let mut command_read = new_command_read(Vec::from(read));
-        let f = command_read.read_frame().await.unwrap();
-        println!("{:?}", f);
-        assert!(frame.eq(&"hello"))
+        let f = frame_write_read(&frame).await;
+        assert!(f.eq(&"hello"))
     }
 
     #[tokio::test]
@@ -341,25 +397,24 @@ mod tests {
             Frame::Integer(2),
             Frame::Bulk(Bytes::from(vec![0x01, 0x02])),
         ]);
-
-        let mut cell = RefCell::new(Vec::new());
-        let mut command_write = new_command_write(cell.get_mut());
-        command_write.write_frame(&frame).await.unwrap();
-        let read = cell.get_mut().as_slice().clone();
-        println!("{:?}", read);
-
-        let mut command_read = new_command_read(Vec::from(read));
-        let f = command_read.read_frame().await.unwrap();
-        println!("{:?}", f);
-
+        let f = frame_write_read(&frame).await;
         assert_eq!(format!("{:?}", frame), format!("{:?}", f))
     }
 
     #[tokio::test]
-    async fn test_read_frame() {
-        let mut bs: Vec<u8> = Vec::new();
-        bs.extend_from_slice("*3".as_bytes());
-        bs.extend_from_slice(consts::CRLF.as_slice());
-        bs.extend_from_slice("*3".as_bytes());
+    async fn test_context() {
+        let (sender, _receiver) = mpsc::channel(128);
+        let command_sender = Arc::new(CommandSender::new("hash".to_string(), sender));
+        let context = Context::new(command_sender);
+
+        let (tx, _receiver) = mpsc::channel(128);
+
+        let uuid = Uuid::new_v4().to_string();
+        let conn_sender = Arc::new(ConnSender::new(uuid.clone(), tx));
+
+        context.set_conn_sender(conn_sender).await;
+
+        let s = context.get_conn_sender(&uuid).await;
+        println!("{:?}", s);
     }
 }

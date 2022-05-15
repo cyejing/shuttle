@@ -1,8 +1,10 @@
+use async_trait::async_trait;
 use bytes::Bytes;
+use log::{debug, error};
 
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
+use crate::rathole::dispatcher::Context;
 use crate::rathole::frame::{Frame, Parse};
-use crate::store::ServerStore;
 
 #[derive(Debug)]
 pub enum Resp {
@@ -40,8 +42,19 @@ impl CommandTo for Resp {
     }
 }
 
+#[async_trait]
 impl CommandApply for Resp {
-    fn apply(&self, _store: ServerStore) -> crate::Result<Option<Resp>> {
+    async fn apply(&self, context: Context) -> crate::Result<Option<Resp>> {
+        let rc = context.get_req().await;
+        if let Some(s) = rc.flatten() {
+            if match self {
+                Resp::Ok(_msg) => s.send(Ok(())),
+                Resp::Err(msg) => s.send(Err(msg.to_string().into())),
+            }.is_err() {
+                error!("req channel close");
+            }
+        };
+        debug!("resp : {:?}", self);
         Ok(None)
     }
 }

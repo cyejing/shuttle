@@ -1,7 +1,8 @@
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
+use crate::rathole::dispatcher::Context;
 use crate::rathole::frame::{Frame, Parse};
-use crate::store::ServerStore;
+use async_trait::async_trait;
 use bytes::Bytes;
 use log::error;
 
@@ -36,20 +37,22 @@ impl CommandTo for Exchange {
     }
 }
 
+#[async_trait]
 impl CommandApply for Exchange {
-    fn apply(&self, store: ServerStore) -> crate::Result<Option<Resp>> {
-        let op_sender = store.get_conn_sender(&self.conn_id);
+    async fn apply(&self, context: Context) -> crate::Result<Option<Resp>> {
+        let conn_id = self.conn_id.clone();
+        let bytes = self.body.clone();
+        let op_sender = context.get_conn_sender(&conn_id).await;
         match op_sender {
             Some(sender) => {
-                let bytes = self.body.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = sender.send(bytes).await {
-                        error!("send bytes err : {}", e);
-                    }
-                });
-                Ok(Some(Resp::Ok("".to_string())))
+                if let Err(e) = sender.send(bytes).await {
+                    error!("send bytes err : {}", e);
+                }
             }
-            None => Ok(Some(Resp::Err("conn close".to_string()))),
+            None => {
+                error!("exchange conn close");
+            }
         }
+        Ok(None)
     }
 }

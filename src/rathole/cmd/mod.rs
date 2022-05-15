@@ -4,8 +4,9 @@ use crate::rathole::cmd::ping::Ping;
 use crate::rathole::cmd::proxy::Proxy;
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::unknown::Unknown;
+use crate::rathole::dispatcher::Context;
 use crate::rathole::frame::{Frame, Parse};
-use crate::store::ServerStore;
+use async_trait::async_trait;
 use std::fmt::Debug;
 
 pub mod dial;
@@ -46,17 +47,17 @@ impl Command {
         Ok((req_id, command))
     }
 
-    pub fn apply(self, store: ServerStore) -> crate::Result<Option<Command>> {
+    pub async fn apply(self, context: Context) -> crate::Result<Option<Command>> {
         use Command::*;
 
         let resp = match self {
-            Dial(dial) => dial.apply(store)?,
-            Exchange(exchange) => exchange.apply(store)?,
-            Ping(ping) => ping.apply(store)?,
-            Proxy(proxy) => proxy.apply(store)?,
-            Resp(resp) => resp.apply(store)?,
-            RespId(_, resp) => resp.apply(store)?,
-            Unknown(unknown) => unknown.apply(store)?,
+            Dial(dial) => dial.apply(context).await?,
+            Exchange(exchange) => exchange.apply(context).await?,
+            Ping(ping) => ping.apply(context).await?,
+            Proxy(proxy) => proxy.apply(context).await?,
+            Resp(resp) => resp.apply(context).await?,
+            RespId(_, resp) => resp.apply(context).await?,
+            Unknown(unknown) => unknown.apply(context).await?,
         };
         let oc = resp.map(Command::Resp);
         Ok(oc)
@@ -82,8 +83,9 @@ pub trait CommandParse<T> {
     fn parse_frame(parse: &mut Parse) -> crate::Result<T>;
 }
 
+#[async_trait]
 pub trait CommandApply {
-    fn apply(&self, store: ServerStore) -> crate::Result<Option<Resp>>;
+    async fn apply(&self, context: Context) -> crate::Result<Option<Resp>>;
 }
 
 pub trait CommandTo {
@@ -91,4 +93,12 @@ pub trait CommandTo {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use uuid::Uuid;
+
+    #[test]
+    fn test_uuid() {
+        let uuid = Uuid::new_v4();
+        println!("{}", uuid.to_string());
+    }
+}
