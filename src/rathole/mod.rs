@@ -1,10 +1,10 @@
+use crate::common::consts;
 use bytes::{Bytes, BytesMut};
 use log::info;
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
-use crate::common::consts;
 
 use crate::config::ClientConfig;
 use crate::rathole::cmd::exchange::Exchange;
@@ -34,7 +34,6 @@ pub async fn start_rathole(cc: ClientConfig) -> crate::Result<()> {
     let mut dispatcher = Dispatcher::new(stream, cc.hash);
     let command_sender = dispatcher.get_command_sender();
 
-
     let f = tokio::spawn(async move { dispatcher.dispatch().await });
 
     for hole in cc.holes {
@@ -58,7 +57,10 @@ async fn exchange_copy(
     context: Context,
 ) -> crate::Result<()> {
     let (mut r, mut w) = io::split(ts);
-    info!("satrt stream copy by exchange conn_id: {:?}",context.current_conn_id);
+    info!(
+        "satrt stream copy by exchange conn_id: {:?}",
+        context.current_conn_id
+    );
     loop {
         tokio::select! {
             r1 = read_bytes(&mut r, context.clone()) => r1?,
@@ -68,7 +70,7 @@ async fn exchange_copy(
 }
 
 async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: Context) -> crate::Result<()> {
-    let mut buf = BytesMut::new();
+    let mut buf = BytesMut::with_capacity(4 * 1024);
     let len = r.read_buf(&mut buf).await?;
     if len > 0 {
         info!("read byte len:{}", len);

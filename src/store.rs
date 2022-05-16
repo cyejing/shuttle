@@ -16,7 +16,9 @@ pub struct ServerStore {
 
 impl ServerStore {
     pub(crate) async fn set_cmd_sender(&self, sender: Arc<CommandSender>) {
-        self.cmd_map.write().await
+        self.cmd_map
+            .write()
+            .await
             .insert(sender.hash.clone(), sender);
     }
 

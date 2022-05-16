@@ -90,12 +90,4 @@ pub trait CommandTo {
 }
 
 #[cfg(test)]
-mod tests {
-    use uuid::Uuid;
-
-    #[test]
-    fn test_uuid() {
-        let uuid = Uuid::new_v4();
-        println!("{}", uuid.to_string());
-    }
-}
+mod tests {}

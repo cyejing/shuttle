@@ -102,9 +102,9 @@ impl ProxyServer {
             self.context.set_conn_sender(conn_sender).await;
 
             let mut context = self.context.clone();
-            context.with_conn_id(conn_id);
+            context.with_conn_id(conn_id.clone());
 
-            let dial = Command::Dial(Dial::new(self.local_addr.clone()));
+            let dial = Command::Dial(Dial::new(self.local_addr.clone(), conn_id));
             context.command_sender.send_sync(dial).await?;
             tokio::spawn(async move {
                 if let Err(e) = exchange_copy(ts, rx, context).await {

@@ -106,7 +106,6 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
     pub fn get_command_sender(&self) -> Arc<CommandSender> {
         self.context.command_sender.clone()
     }
-    
 }
 
 impl<T: AsyncRead> CommandRead<T> {

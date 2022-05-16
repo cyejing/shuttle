@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use log::{debug, error};
+use log::error;
 
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
 use crate::rathole::context::Context;
@@ -56,7 +56,6 @@ impl CommandApply for Resp {
                 error!("req channel close");
             }
         };
-        debug!("resp : {:?}", self);
         Ok(None)
     }
 }

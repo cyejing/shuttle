@@ -253,7 +253,9 @@ impl ServerHandler {
 
         let mut dispatcher =
             Dispatcher::new(stream, self.hash.clone().expect("rathole hash empty!"));
-        self.store.set_cmd_sender(dispatcher.get_command_sender()).await;
+        self.store
+            .set_cmd_sender(dispatcher.get_command_sender())
+            .await;
         dispatcher.dispatch().await
     }
 }
