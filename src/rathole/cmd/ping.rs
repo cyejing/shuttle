@@ -1,6 +1,6 @@
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
-use crate::rathole::dispatcher::Context;
+use crate::rathole::context::Context;
 use crate::rathole::frame::{Frame, Parse, ParseError};
 use async_trait::async_trait;
 use bytes::Bytes;

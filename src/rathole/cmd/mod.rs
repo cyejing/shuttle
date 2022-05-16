@@ -4,7 +4,7 @@ use crate::rathole::cmd::ping::Ping;
 use crate::rathole::cmd::proxy::Proxy;
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::unknown::Unknown;
-use crate::rathole::dispatcher::Context;
+use crate::rathole::context::Context;
 use crate::rathole::frame::{Frame, Parse};
 use async_trait::async_trait;
 use std::fmt::Debug;
@@ -23,7 +23,6 @@ pub enum Command {
     Ping(Ping),
     Proxy(Proxy),
     Resp(Resp),
-    RespId(u64, Resp),
     Unknown(Unknown),
 }
 
@@ -56,7 +55,6 @@ impl Command {
             Ping(ping) => ping.apply(context).await?,
             Proxy(proxy) => proxy.apply(context).await?,
             Resp(resp) => resp.apply(context).await?,
-            RespId(_, resp) => resp.apply(context).await?,
             Unknown(unknown) => unknown.apply(context).await?,
         };
         let oc = resp.map(Command::Resp);
@@ -72,7 +70,6 @@ impl Command {
             Ping(ping) => ping.to_frame()?.push_req_id(req_id),
             Proxy(proxy) => proxy.to_frame()?.push_req_id(req_id),
             Resp(resp) => resp.to_frame()?.push_req_id(req_id),
-            RespId(oid, resp) => resp.to_frame()?.push_req_id(oid),
             _ => return Err("undo".into()),
         };
         Ok(f)

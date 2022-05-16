@@ -6,7 +6,6 @@ use shuttle::logs::init_log;
 use shuttle::rathole::cmd::ping::Ping;
 use shuttle::rathole::cmd::Command;
 use shuttle::rathole::dispatcher::{CommandRead, CommandWrite, Dispatcher};
-use shuttle::store::ServerStore;
 
 #[tokio::test]
 async fn test_ping() {
@@ -30,8 +29,7 @@ async fn start_command_server() {
         loop {
             let (stream, _) = listener.accept().await.unwrap();
             info!("accept redis");
-            let store = ServerStore::default();
-            let mut dispatcher = Dispatcher::new(stream, String::from("hash"), store);
+            let mut dispatcher = Dispatcher::new(stream, String::from("hash"));
 
             tokio::spawn(async move {
                 if let Err(e) = dispatcher.dispatch().await {

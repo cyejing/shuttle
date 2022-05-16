@@ -161,11 +161,11 @@ impl ServerHandler {
 
         return if trojan.password_hash.contains_key(&hash_str) {
             debug!("{} detect trojan", hash_str);
-            self.hash = Option::Some(hash_str);
+            self.hash = Some(hash_str);
             Ok(ConnType::Trojan)
         } else if rathole.password_hash.contains_key(&hash_str) {
             debug!("{} detect rathole", hash_str);
-            self.hash = Option::Some(hash_str);
+            self.hash = Some(hash_str);
             Ok(ConnType::Rathole)
         } else {
             debug!("detect proxy");
@@ -249,12 +249,11 @@ impl ServerHandler {
         &mut self,
         stream: &mut T,
     ) -> crate::Result<()> {
-        let mut dispatcher = Dispatcher::new(
-            stream,
-            self.hash.clone().expect("rathole hash empty!"),
-            self.store.clone(),
-        );
-        self.store.set_cmd_sender(dispatcher.get_command_sender());
+        let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
+
+        let mut dispatcher =
+            Dispatcher::new(stream, self.hash.clone().expect("rathole hash empty!"));
+        self.store.set_cmd_sender(dispatcher.get_command_sender()).await;
         dispatcher.dispatch().await
     }
 }

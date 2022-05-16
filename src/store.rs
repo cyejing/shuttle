@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::config::{RatHole, ServerConfig, Trojan};
-use crate::rathole::dispatcher::CommandSender;
+use crate::rathole::context::CommandSender;
 
 #[derive(Debug, Clone)]
 pub struct ServerStore {
@@ -15,15 +15,14 @@ pub struct ServerStore {
 }
 
 impl ServerStore {
-    pub(crate) fn set_cmd_sender(&self, sender: Arc<CommandSender>) {
-        self.cmd_map
-            .blocking_write()
+    pub(crate) async fn set_cmd_sender(&self, sender: Arc<CommandSender>) {
+        self.cmd_map.write().await
             .insert(sender.hash.clone(), sender);
     }
 
     #[allow(dead_code)]
-    pub(crate) fn get_cmd_sender(&self, hash: &String) -> Option<Arc<CommandSender>> {
-        self.cmd_map.blocking_read().get(hash).cloned()
+    pub(crate) async fn get_cmd_sender(&self, hash: &String) -> Option<Arc<CommandSender>> {
+        self.cmd_map.read().await.get(hash).cloned()
     }
 }
 

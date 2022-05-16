@@ -1,6 +1,6 @@
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::CommandApply;
-use crate::rathole::dispatcher::Context;
+use crate::rathole::context::Context;
 use async_trait::async_trait;
 
 #[derive(Debug)]

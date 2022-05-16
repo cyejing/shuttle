@@ -1,6 +1,6 @@
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
-use crate::rathole::dispatcher::Context;
+use crate::rathole::context::Context;
 use crate::rathole::frame::{Frame, Parse};
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -31,6 +31,7 @@ impl CommandParse<Exchange> for Exchange {
 impl CommandTo for Exchange {
     fn to_frame(&self) -> crate::Result<Frame> {
         let mut f = Frame::array();
+        f.push_bulk(Bytes::from(Self::COMMAND_NAME));
         f.push_bulk(Bytes::from(self.conn_id.clone()));
         f.push_bulk(self.body.clone());
         Ok(f)
@@ -39,10 +40,11 @@ impl CommandTo for Exchange {
 
 #[async_trait]
 impl CommandApply for Exchange {
-    async fn apply(&self, context: Context) -> crate::Result<Option<Resp>> {
+    async fn apply(&self, mut context: Context) -> crate::Result<Option<Resp>> {
         let conn_id = self.conn_id.clone();
         let bytes = self.body.clone();
-        let op_sender = context.get_conn_sender(&conn_id).await;
+        context.with_conn_id(conn_id);
+        let op_sender = context.get_conn_sender().await;
         match op_sender {
             Some(sender) => {
                 if let Err(e) = sender.send(bytes).await {

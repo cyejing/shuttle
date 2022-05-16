@@ -98,7 +98,7 @@ impl ServerConfig {
     }
 }
 
-const DEFAULT_CLIENT_CONFIG_PATH: [&str; 2] = ["shuttlec.yaml", "examples/shuttlec.yaml"];
+const DEFAULT_CLIENT_CONFIG_PATH: [&str; 2] = ["shuttlec.yaml", "examples/shuttlec-rathole.yaml"];
 
 impl ClientConfig {
     pub fn load(file_op: Option<String>) -> ClientConfig {

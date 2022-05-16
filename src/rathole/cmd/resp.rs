@@ -3,7 +3,7 @@ use bytes::Bytes;
 use log::{debug, error};
 
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
-use crate::rathole::dispatcher::Context;
+use crate::rathole::context::Context;
 use crate::rathole::frame::{Frame, Parse};
 
 #[derive(Debug)]
@@ -50,7 +50,9 @@ impl CommandApply for Resp {
             if match self {
                 Resp::Ok(_msg) => s.send(Ok(())),
                 Resp::Err(msg) => s.send(Err(msg.to_string().into())),
-            }.is_err() {
+            }
+            .is_err()
+            {
                 error!("req channel close");
             }
         };
