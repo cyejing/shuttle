@@ -1,4 +1,3 @@
-use crate::common::consts;
 use bytes::{Bytes, BytesMut};
 use log::info;
 use tokio::io;
@@ -6,10 +5,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::common::consts;
 use crate::config::ClientConfig;
+use crate::rathole::cmd::Command;
 use crate::rathole::cmd::exchange::Exchange;
 use crate::rathole::cmd::proxy::Proxy;
-use crate::rathole::cmd::Command;
 use crate::rathole::context::Context;
 use crate::rathole::dispatcher::Dispatcher;
 
@@ -58,7 +58,7 @@ async fn exchange_copy(
 ) -> crate::Result<()> {
     let (mut r, mut w) = io::split(ts);
     info!(
-        "satrt stream copy by exchange conn_id: {:?}",
+        "start stream copy by exchange conn_id: {:?}",
         context.current_conn_id
     );
     loop {
@@ -73,12 +73,13 @@ async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: Context) -> crate::Res
     let mut buf = BytesMut::with_capacity(4 * 1024);
     let len = r.read_buf(&mut buf).await?;
     if len > 0 {
-        info!("read byte len:{}", len);
         let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), buf.freeze()));
         context.command_sender.send(exchange).await?;
         Ok(())
     } else {
-        Err("proxy conn EOF".into())
+        let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), Bytes::new()));
+        context.command_sender.send(exchange).await?;
+        Err("exchange local conn EOF".into())
     }
 }
 
@@ -87,8 +88,12 @@ async fn write_bytes(
     rx: &mut mpsc::Receiver<Bytes>,
 ) -> crate::Result<()> {
     if let Some(bytes) = rx.recv().await {
-        w.write_all(&bytes).await?;
-        Ok(())
+        if bytes.is_empty() {
+            w.write_all(&bytes).await?;
+            Ok(())
+        } else {
+            Err("exchange remote conn close".into())
+        }
     } else {
         Err("exchange receiver none".into())
     }
@@ -99,9 +104,9 @@ mod tests {
     use std::cell::RefCell;
     use std::io::Cursor;
 
+    use crate::rathole::cmd::Command;
     use crate::rathole::cmd::ping::Ping;
     use crate::rathole::cmd::resp::Resp;
-    use crate::rathole::cmd::Command;
     use crate::rathole::dispatcher::{CommandRead, CommandWrite};
 
     pub fn new_command_read(buf: &mut Vec<u8>) -> CommandRead<Cursor<Vec<u8>>> {
