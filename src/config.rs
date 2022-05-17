@@ -11,8 +11,6 @@ use tokio_rustls::rustls::{Certificate, PrivateKey};
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
     pub addrs: Vec<Addr>,
-    #[serde(default)]
-    pub logfile: String,
     pub trojan: Trojan,
     pub rathole: RatHole,
 }
@@ -28,8 +26,6 @@ pub struct ClientConfig {
     pub sock_addr: String,
     #[serde(default = "default_true")]
     pub ssl_enable: bool,
-    #[serde(default)]
-    pub logfile: String,
     #[serde(default)]
     pub holes: Vec<Hole>,
 }

@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use log::error;
 
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
 use crate::rathole::context::Context;

@@ -1,4 +1,6 @@
 extern crate core;
+#[macro_use]
+extern crate log;
 
 pub mod common;
 pub mod config;
@@ -12,34 +14,13 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub mod logs {
-    use std::mem::forget;
-
-    use tracing_appender::{non_blocking, rolling};
-    use tracing_subscriber::layer::SubscriberExt;
-    use tracing_subscriber::util::SubscriberInitExt;
-    use tracing_subscriber::{fmt, EnvFilter};
+    use log::LevelFilter;
 
     pub fn init_log() {
-        let env_filter = EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into());
-        // 输出到控制台中
-        let stdout_layer = fmt::layer()
-            .with_thread_ids(true)
-            .with_writer(std::io::stdout);
-
-        // 输出到文件中
-        let (file_appender, guard) = non_blocking(rolling::never("logs", "shuttle.log"));
-        let file_layer = fmt::layer()
-            .with_ansi(false)
-            .with_line_number(true)
-            .with_writer(file_appender);
-
-        tracing_subscriber::registry()
-            .with(env_filter)
-            .with(stdout_layer)
-            .with(file_layer)
+        env_logger::Builder::from_default_env()
+            .filter_level(LevelFilter::Info)
+            .parse_default_env()
             .init();
-
-        forget(guard)
     }
 }
 

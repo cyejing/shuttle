@@ -2,7 +2,6 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 use bytes::{Buf, BytesMut};
-use log::info;
 use tokio::io;
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf,
@@ -131,8 +130,6 @@ impl<T: AsyncRead> CommandRead<T> {
 
             if 0 == self.read.read_buf(&mut self.buffer).await? {
                 return Err("connection reset by peer".into());
-            } else {
-                info!("{}", pretty_hex::pretty_hex(&self.buffer))
             }
         }
     }

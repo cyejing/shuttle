@@ -1,5 +1,4 @@
 use bytes::{Bytes, BytesMut};
-use log::info;
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
@@ -7,9 +6,9 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::common::consts;
 use crate::config::ClientConfig;
-use crate::rathole::cmd::Command;
 use crate::rathole::cmd::exchange::Exchange;
 use crate::rathole::cmd::proxy::Proxy;
+use crate::rathole::cmd::Command;
 use crate::rathole::context::Context;
 use crate::rathole::dispatcher::Dispatcher;
 
@@ -89,10 +88,10 @@ async fn write_bytes(
 ) -> crate::Result<()> {
     if let Some(bytes) = rx.recv().await {
         if bytes.is_empty() {
+            Err("exchange remote conn close".into())
+        } else {
             w.write_all(&bytes).await?;
             Ok(())
-        } else {
-            Err("exchange remote conn close".into())
         }
     } else {
         Err("exchange receiver none".into())
@@ -104,9 +103,9 @@ mod tests {
     use std::cell::RefCell;
     use std::io::Cursor;
 
-    use crate::rathole::cmd::Command;
     use crate::rathole::cmd::ping::Ping;
     use crate::rathole::cmd::resp::Resp;
+    use crate::rathole::cmd::Command;
     use crate::rathole::dispatcher::{CommandRead, CommandWrite};
 
     pub fn new_command_read(buf: &mut Vec<u8>) -> CommandRead<Cursor<Vec<u8>>> {

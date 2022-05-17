@@ -2,15 +2,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use log::{error, info};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
-use uuid::Uuid;
 
 use crate::rathole::cmd::dial::Dial;
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::{Command, CommandApply, CommandParse, CommandTo};
-use crate::rathole::context::{ConnSender, Context};
+use crate::rathole::context::{ConnSender, Context, IdAdder};
 use crate::rathole::exchange_copy;
 use crate::rathole::frame::{Frame, Parse};
 
@@ -70,6 +68,7 @@ pub struct ProxyServer {
     addr: String,
     local_addr: String,
     context: Context,
+    id_adder: IdAdder,
 }
 
 impl ProxyServer {
@@ -78,6 +77,7 @@ impl ProxyServer {
             addr,
             local_addr,
             context,
+            id_adder: IdAdder::default(),
         }
     }
 
@@ -97,19 +97,21 @@ impl ProxyServer {
             info!("accept proxy conn");
             let (tx, rx) = mpsc::channel(24);
 
-            let conn_id = Uuid::new_v4().to_string();
-            let conn_sender = Arc::new(ConnSender::new(conn_id.clone(), tx));
+            let conn_id = self.id_adder.add_and_get().await;
+            let conn_sender = Arc::new(ConnSender::new(conn_id, tx));
             self.context.set_conn_sender(conn_sender).await;
 
             let mut context = self.context.clone();
-            context.with_conn_id(conn_id.clone());
+            context.with_conn_id(conn_id);
 
-            let dial = Command::Dial(Dial::new(self.local_addr.clone(), conn_id));
+            let dial = Command::Dial(Dial::new(conn_id, self.local_addr.clone()));
             context.command_sender.send_sync(dial).await?;
             tokio::spawn(async move {
-                if let Err(e) = exchange_copy(ts, rx, context).await {
+                if let Err(e) = exchange_copy(ts, rx, context.clone()).await {
                     error!("exchange bytes err: {}", e);
                 }
+                let discard = context.remove_conn_sender().await;
+                drop(discard);
             });
         }
     }
@@ -119,7 +121,6 @@ impl ProxyServer {
 mod tests {
     use std::sync::Arc;
 
-    use log::{error, info};
     use tokio::sync::mpsc;
 
     use crate::logs::init_log;

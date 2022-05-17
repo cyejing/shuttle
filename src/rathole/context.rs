@@ -3,15 +3,15 @@ use crate::rathole::{CommandChannel, ReqChannel};
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 #[derive(Debug, Clone)]
 pub struct Context {
     pub command_sender: Arc<CommandSender>,
-    pub conn_map: Arc<RwLock<HashMap<String, Arc<ConnSender>>>>,
+    pub conn_map: Arc<Mutex<HashMap<u64, Arc<ConnSender>>>>,
     pub req_map: Arc<Mutex<HashMap<u64, ReqChannel>>>,
     pub current_req_id: Option<u64>,
-    pub current_conn_id: Option<String>,
+    pub current_conn_id: Option<u64>,
 }
 
 impl Context {
@@ -20,7 +20,7 @@ impl Context {
             command_sender,
             current_req_id: None,
             current_conn_id: None,
-            conn_map: Arc::new(RwLock::new(HashMap::new())),
+            conn_map: Arc::new(Mutex::new(HashMap::new())),
             req_map: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -29,13 +29,15 @@ impl Context {
         self.current_req_id = Some(req_id);
     }
 
-    pub(crate) fn with_conn_id(&mut self, conn_id: String) {
+    pub(crate) fn with_conn_id(&mut self, conn_id: u64) {
         self.current_conn_id = Some(conn_id);
     }
 
     pub(crate) async fn set_req(&self, req_channel: ReqChannel) {
         if let Some(req_id) = self.current_req_id {
-            self.req_map.lock().await.insert(req_id, req_channel);
+            if req_channel.is_some(){
+                self.req_map.lock().await.insert(req_id, req_channel);
+            }
         }
     }
 
@@ -49,22 +51,26 @@ impl Context {
     }
 
     pub(crate) async fn set_conn_sender(&self, sender: Arc<ConnSender>) {
-        self.conn_map
-            .write()
-            .await
-            .insert(sender.conn_id.clone(), sender);
+        self.conn_map.lock().await.insert(sender.conn_id, sender);
     }
 
     pub(crate) async fn get_conn_sender(&self) -> Option<Arc<ConnSender>> {
         match &self.current_conn_id {
-            Some(conn_id) => self.conn_map.read().await.get(conn_id).cloned(),
+            Some(conn_id) => self.conn_map.lock().await.get(conn_id).cloned(),
             None => panic!("context current conn id is empty"),
         }
     }
 
-    pub(crate) fn get_conn_id(&self) -> String {
+    pub(crate) async fn remove_conn_sender(&self) -> Option<Arc<ConnSender>>{
         match &self.current_conn_id {
-            Some(conn_id) => conn_id.clone(),
+            Some(conn_id) => self.conn_map.lock().await.remove(conn_id),
+            None => panic!("context current conn id is empty"),
+        }
+    }
+
+    pub(crate) fn get_conn_id(&self) -> u64 {
+        match self.current_conn_id {
+            Some(conn_id) => conn_id,
             None => panic!("context current conn id is empty"),
         }
     }
@@ -72,12 +78,12 @@ impl Context {
 
 #[derive(Debug, Clone)]
 pub struct ConnSender {
-    pub conn_id: String,
+    pub conn_id: u64,
     pub sender: mpsc::Sender<Bytes>,
 }
 
 impl ConnSender {
-    pub fn new(conn_id: String, sender: mpsc::Sender<Bytes>) -> Self {
+    pub fn new(conn_id: u64, sender: mpsc::Sender<Bytes>) -> Self {
         ConnSender { conn_id, sender }
     }
 
@@ -121,7 +127,7 @@ impl CommandSender {
 }
 
 #[derive(Debug, Clone)]
-struct IdAdder {
+pub struct IdAdder {
     inner: Arc<Mutex<u64>>,
 }
 
