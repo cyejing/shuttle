@@ -11,6 +11,7 @@ use crate::rathole::cmd::exchange::Exchange;
 use crate::rathole::cmd::proxy::Proxy;
 use crate::rathole::cmd::Command;
 use crate::rathole::dispatcher::Dispatcher;
+use crate::tls::{make_server_name, make_tls_connector};
 
 pub mod cmd;
 pub mod context;
@@ -21,19 +22,23 @@ pub type ReqChannel = Option<oneshot::Sender<anyhow::Result<()>>>;
 pub type CommandChannel = (u64, Command, ReqChannel);
 
 pub async fn start_rathole(cc: ClientConfig) -> anyhow::Result<()> {
-    let mut stream = TcpStream::connect(&cc.remote_addr)
+    let remote_addr = &cc.remote_addr;
+    let stream = TcpStream::connect(remote_addr)
         .await
-        .context(format!("Can't connect remote addr {}", &cc.remote_addr))?;
+        .context(format!("Can't connect remote addr {}", remote_addr))?;
+
+    let domain = make_server_name(remote_addr)?;
+    let mut tls_stream = make_tls_connector().connect(domain, stream).await?;
 
     let mut buf: Vec<u8> = vec![];
     buf.extend_from_slice(cc.hash.as_bytes());
     buf.extend_from_slice(&consts::CRLF);
-    stream
+    tls_stream
         .write_all(buf.as_slice())
         .await
         .context("Can't write rathole hash")?;
 
-    let mut dispatcher = Dispatcher::new(stream, cc.hash);
+    let mut dispatcher = Dispatcher::new(tls_stream, cc.hash);
     let command_sender = dispatcher.get_command_sender();
 
     let f =

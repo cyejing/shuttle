@@ -177,22 +177,14 @@ impl DialRemote for SocksDial {
 pub struct TrojanDial {
     remote: String,
     hash: String,
-    domain: String,
     ssl_enable: bool,
 }
 
 impl TrojanDial {
     pub fn new(remote: String, hash: String, ssl_enable: bool) -> TrojanDial {
-        let domain = remote.clone();
-        let domain = domain
-            .split(':')
-            .next()
-            .unwrap_or_else(|| panic!("domain parse error : {}", remote));
-        debug!("Parse domain is : {}", domain);
         TrojanDial {
             remote,
             hash,
-            domain: String::from(domain),
             ssl_enable,
         }
     }
@@ -211,7 +203,7 @@ impl DialRemote for TrojanDial {
         buf.extend_from_slice(&consts::CRLF);
 
         if self.ssl_enable {
-            let server_name = make_server_name(self.domain.as_str())?;
+            let server_name = make_server_name(self.remote.as_str())?;
             let mut ssl_tts = make_tls_connector()
                 .connect(server_name, tts)
                 .await

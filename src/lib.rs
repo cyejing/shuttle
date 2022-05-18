@@ -60,6 +60,11 @@ pub mod tls {
     }
 
     pub fn make_server_name(domain: &str) -> anyhow::Result<rustls::ServerName> {
+        let domain = domain
+            .split(':')
+            .next()
+            .ok_or_else(|| anyhow!("domain parse error : {}", domain))?;
+        debug!("Parse domain is : {}", domain);
         rustls::ServerName::try_from(domain)
             .map_err(|e| anyhow!("try from domain [{}] to server name err : {}", &domain, e))
     }
