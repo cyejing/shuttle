@@ -25,6 +25,7 @@ pub mod logs {
 }
 
 pub mod tls {
+    use anyhow::{anyhow, Context};
     use std::sync::Arc;
 
     use tokio_rustls::rustls;
@@ -38,7 +39,8 @@ pub mod tls {
             .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(certs, key)
-            .expect("bad certificates/private key");
+            .context("Bad certificates/private key")
+            .unwrap();
 
         tokio_rustls::TlsAcceptor::from(Arc::new(config))
     }
@@ -61,8 +63,8 @@ pub mod tls {
         tokio_rustls::TlsConnector::from(Arc::new(config))
     }
 
-    pub fn make_server_name(domain: &str) -> crate::Result<rustls::ServerName> {
+    pub fn make_server_name(domain: &str) -> anyhow::Result<rustls::ServerName> {
         rustls::ServerName::try_from(domain)
-            .map_err(|e| format!("try from domain [{}] to server name err : {}", &domain, e).into())
+            .map_err(|e| anyhow!("try from domain [{}] to server name err : {}", &domain, e))
     }
 }

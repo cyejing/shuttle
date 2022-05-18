@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use clap::Parser;
@@ -10,8 +11,8 @@ use shuttle::store::ServerStore;
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// Config Path
-    #[clap(short, long)]
-    config_path: Option<String>,
+    #[clap(parse(from_os_str), name = "CONFIG_PATH")]
+    config_path: Option<PathBuf>,
 }
 
 #[tokio::main]

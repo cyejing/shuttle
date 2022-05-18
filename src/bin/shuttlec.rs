@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
@@ -13,7 +14,7 @@ use shuttle::{rathole, socks};
 struct Args {
     /// Config Path
     #[clap(short, long)]
-    config_path: Option<String>,
+    config_path: Option<PathBuf>,
 }
 
 #[tokio::main]

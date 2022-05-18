@@ -1,3 +1,4 @@
+use anyhow::Context;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -18,7 +19,8 @@ pub async fn start_server(addr: Addr, store: ServerStore) {
     let addr_str = addr.addr;
     let listener = TcpListener::bind(&addr_str)
         .await
-        .expect("bind port failed");
+        .context(format!("Can't bind server port {}", addr_str))
+        .unwrap();
     info!("Server listener addr : {}", &addr_str);
     let acceptor = if addr.ssl_enable {
         let cert_loaded = addr.cert_loaded;
@@ -39,7 +41,7 @@ pub async fn start_server(addr: Addr, store: ServerStore) {
     tokio::spawn(async move {
         if let Err(err) = server.run().await {
             error!(
-                "server [{}] accept connection err : {}",
+                "Server [{}] accept connection err : {}",
                 server.addr_str, err
             );
         }

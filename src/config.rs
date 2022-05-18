@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
+use std::path::PathBuf;
 
+use anyhow::Context;
 use crypto::digest::Digest;
 use crypto::sha2::Sha224;
 use serde::{Deserialize, Serialize};
 use tokio_rustls::rustls;
-use tokio_rustls::rustls::{Certificate, PrivateKey};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -38,9 +39,9 @@ pub struct Addr {
     #[serde(skip)]
     pub ssl_enable: bool,
     #[serde(skip)]
-    pub cert_loaded: Vec<Certificate>,
+    pub cert_loaded: Vec<rustls::Certificate>,
     #[serde(skip)]
-    pub key_loaded: Vec<PrivateKey>,
+    pub key_loaded: Vec<rustls::PrivateKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -68,11 +69,12 @@ pub struct Hole {
 const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["shuttles.yaml", "examples/shuttles.yaml"];
 
 impl ServerConfig {
-    pub fn load(file_op: Option<String>) -> ServerConfig {
-        let file = open_config_file(file_op, Vec::from(DEFAULT_SERVER_CONFIG_PATH));
+    pub fn load(path: Option<PathBuf>) -> ServerConfig {
+        let file = open_config_file(path, Vec::from(DEFAULT_SERVER_CONFIG_PATH));
 
         let mut sc: ServerConfig = serde_yaml::from_reader(file)
-            .unwrap_or_else(|e| panic!("serde read file failed {}", e));
+            .context("Can't serde read config file")
+            .unwrap();
         for mut addr in &mut sc.addrs {
             if addr.cert.is_some() && addr.key.is_some() {
                 addr.ssl_enable = true;
@@ -94,31 +96,49 @@ impl ServerConfig {
     }
 }
 
-const DEFAULT_CLIENT_CONFIG_PATH: [&str; 2] = ["shuttlec.yaml", "examples/shuttlec-rathole.yaml"];
+const DEFAULT_CLIENT_CONFIG_PATH: [&str; 6] = [
+    "shuttlec.yaml",
+    "shuttlec-socks.yaml",
+    "shuttlec-rathole.yaml",
+    "examples/shuttlec.yaml",
+    "examples/shuttlec-socks.yaml",
+    "examples/shuttlec-rathole.yaml",
+];
 
 impl ClientConfig {
-    pub fn load(file_op: Option<String>) -> ClientConfig {
-        let file = open_config_file(file_op, Vec::from(DEFAULT_CLIENT_CONFIG_PATH));
+    pub fn load(path: Option<PathBuf>) -> ClientConfig {
+        let file = open_config_file(path, Vec::from(DEFAULT_CLIENT_CONFIG_PATH));
 
         let mut cc: ClientConfig = serde_yaml::from_reader(file)
-            .unwrap_or_else(|e| panic!("serde read file failed {}", e));
+            .context("Can't serde read config file")
+            .unwrap();
         cc.hash = sha224(&cc.password);
         cc
     }
 }
 
-fn open_config_file(file_op: Option<String>, default_paths: Vec<&str>) -> File {
-    if let Some(file_path) = file_op {
-        File::open(&file_path).unwrap_or_else(|e| panic!("open file [{}] failed {}", &file_path, e))
+fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {
+    if let Some(pb) = path {
+        let path_str = pb.to_str().unwrap();
+        info!("Open config file : {}", path_str);
+        File::open(pb.as_path())
+            .context(format!("open config file {:?} err", path_str))
+            .unwrap()
     } else {
-        let mut of: Option<File> = Option::None;
-        for path in default_paths {
-            if let Result::Ok(file) = File::open(path) {
-                of = Option::Some(file);
+        let mut of: Option<File> = None;
+        for path in &default_paths {
+            if let Ok(file) = File::open(*path) {
+                info!("open config file : {}", *path);
+                of = Some(file);
                 break;
             }
         }
-        of.expect("Can't find the default config file ./shuttles.yaml or ./shuttlec.yaml")
+
+        of.context(format!(
+            "Can't find default config file [{:?}]",
+            &default_paths
+        ))
+        .unwrap()
     }
 }
 
@@ -137,8 +157,10 @@ fn sha224(password: &String) -> String {
 }
 
 pub fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
-    let certfile = File::open(filename).expect("cannot open certificate file");
-    let mut reader = BufReader::new(certfile);
+    let cert_file = File::open(filename)
+        .context(format!("Can't open certificate file {}", filename))
+        .unwrap();
+    let mut reader = BufReader::new(cert_file);
     rustls_pemfile::certs(&mut reader)
         .unwrap()
         .iter()
@@ -147,11 +169,16 @@ pub fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
 }
 
 pub fn load_private_key(filename: &str) -> rustls::PrivateKey {
-    let keyfile = File::open(filename).expect("cannot open private key file");
+    let keyfile = File::open(filename)
+        .context(format!("Can't open private key file {}", filename))
+        .unwrap();
     let mut reader = BufReader::new(keyfile);
 
     loop {
-        match rustls_pemfile::read_one(&mut reader).expect("cannot parse private key .pem file") {
+        match rustls_pemfile::read_one(&mut reader)
+            .context("Can't parse private key .pem file")
+            .unwrap()
+        {
             Some(rustls_pemfile::Item::RSAKey(key)) => return rustls::PrivateKey(key),
             Some(rustls_pemfile::Item::PKCS8Key(key)) => return rustls::PrivateKey(key),
             None => break,

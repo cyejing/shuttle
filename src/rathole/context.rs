@@ -35,7 +35,7 @@ impl Context {
 
     pub(crate) async fn set_req(&self, req_channel: ReqChannel) {
         if let Some(req_id) = self.current_req_id {
-            if req_channel.is_some(){
+            if req_channel.is_some() {
                 self.req_map.lock().await.insert(req_id, req_channel);
             }
         }
@@ -61,7 +61,7 @@ impl Context {
         }
     }
 
-    pub(crate) async fn remove_conn_sender(&self) -> Option<Arc<ConnSender>>{
+    pub(crate) async fn remove_conn_sender(&self) -> Option<Arc<ConnSender>> {
         match &self.current_conn_id {
             Some(conn_id) => self.conn_map.lock().await.remove(conn_id),
             None => panic!("context current conn id is empty"),
