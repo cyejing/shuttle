@@ -1,13 +1,14 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use clap::Parser;
-use log::info;
+use log::{error, info};
 
+use shuttle::{rathole, socks};
 use shuttle::config::ClientConfig;
 use shuttle::logs::init_log;
 use shuttle::socks::TrojanDial;
-use shuttle::{rathole, socks};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -35,8 +36,19 @@ async fn main() {
 
 async fn start_rathole(cc: ClientConfig) {
     info!("run with rathole");
-    if let Err(e) = rathole::start_rathole(cc).await {
-        panic!("start rathole err :{}", e);
+    let mut backoff = 100;
+
+    loop {
+        if let Err(e) = rathole::start_rathole(cc.clone()).await {
+            error!("Rathole occurs err :{}", e);
+            if backoff > 6400 {
+                backoff = 1200
+            }
+        }
+        info!("Retry after {} millis",backoff);
+        tokio::time::sleep(Duration::from_millis(backoff)).await;
+
+        backoff *= 2;
     }
 }
 

@@ -1,3 +1,4 @@
+use anyhow::Context;
 use bytes::{Bytes, BytesMut};
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
@@ -9,7 +10,6 @@ use crate::config::ClientConfig;
 use crate::rathole::cmd::exchange::Exchange;
 use crate::rathole::cmd::proxy::Proxy;
 use crate::rathole::cmd::Command;
-use crate::rathole::context::Context;
 use crate::rathole::dispatcher::Dispatcher;
 
 pub mod cmd;
@@ -21,14 +21,14 @@ pub type ReqChannel = Option<oneshot::Sender<crate::Result<()>>>;
 pub type CommandChannel = (u64, Command, ReqChannel);
 
 pub async fn start_rathole(cc: ClientConfig) -> crate::Result<()> {
-    let mut stream = TcpStream::connect(cc.remote_addr)
+    let mut stream = TcpStream::connect(&cc.remote_addr)
         .await
-        .expect("connect remote addr err");
+        .context(format!("Can't connect remote addr {}", &cc.remote_addr))?;
 
     let mut buf: Vec<u8> = vec![];
     buf.extend_from_slice(cc.hash.as_bytes());
     buf.extend_from_slice(&consts::CRLF);
-    stream.write_all(buf.as_slice()).await?;
+    stream.write_all(buf.as_slice()).await.context("Can't write rathole hash")?;
 
     let mut dispatcher = Dispatcher::new(stream, cc.hash);
     let command_sender = dispatcher.get_command_sender();
@@ -53,7 +53,7 @@ pub async fn start_rathole(cc: ClientConfig) -> crate::Result<()> {
 async fn exchange_copy(
     ts: TcpStream,
     mut rx: mpsc::Receiver<Bytes>,
-    context: Context,
+    context: context::Context,
 ) -> crate::Result<()> {
     let (mut r, mut w) = io::split(ts);
     info!(
@@ -68,7 +68,7 @@ async fn exchange_copy(
     }
 }
 
-async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: Context) -> crate::Result<()> {
+async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: context::Context) -> crate::Result<()> {
     let mut buf = BytesMut::with_capacity(4 * 1024);
     let len = r.read_buf(&mut buf).await?;
     if len > 0 {

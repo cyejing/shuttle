@@ -16,7 +16,7 @@ pub struct ServerConfig {
     pub rathole: RatHole,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ClientConfig {
     pub run_type: String,
     pub remote_addr: String,

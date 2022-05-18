@@ -1,4 +1,4 @@
-use log::{error, info};
+use log::{error};
 use tokio::io;
 use tokio::net::{TcpListener, TcpStream};
 
@@ -28,7 +28,6 @@ async fn start_command_server() {
     tokio::spawn(async move {
         loop {
             let (stream, _) = listener.accept().await.unwrap();
-            info!("accept redis");
             let mut dispatcher = Dispatcher::new(stream, String::from("hash"));
 
             tokio::spawn(async move {
