@@ -1,4 +1,4 @@
-use log::{error};
+use log::error;
 use tokio::io;
 use tokio::net::{TcpListener, TcpStream};
 

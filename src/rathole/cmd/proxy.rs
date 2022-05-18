@@ -13,7 +13,7 @@ use crate::rathole::exchange_copy;
 use crate::rathole::frame::{Frame, Parse};
 
 #[derive(Debug)]
-#[allow(dead_code)]
+
 pub struct Proxy {
     remote_addr: String,
     local_addr: String,
@@ -31,7 +31,7 @@ impl Proxy {
 }
 
 impl CommandParse<Proxy> for Proxy {
-    fn parse_frame(parse: &mut Parse) -> crate::Result<Self> {
+    fn parse_frame(parse: &mut Parse) -> anyhow::Result<Self> {
         let remote_addr = parse.next_string()?;
         let local_addr = parse.next_string()?;
         Ok(Proxy::new(remote_addr, local_addr))
@@ -39,7 +39,7 @@ impl CommandParse<Proxy> for Proxy {
 }
 
 impl CommandTo for Proxy {
-    fn to_frame(&self) -> crate::Result<Frame> {
+    fn to_frame(&self) -> anyhow::Result<Frame> {
         let mut f = Frame::array();
         f.push_bulk(Bytes::from(Self::COMMAND_NAME));
         f.push_bulk(Bytes::from(self.remote_addr.clone()));
@@ -50,7 +50,7 @@ impl CommandTo for Proxy {
 
 #[async_trait]
 impl CommandApply for Proxy {
-    async fn apply(&self, context: Context) -> crate::Result<Option<Resp>> {
+    async fn apply(&self, context: Context) -> anyhow::Result<Option<Resp>> {
         let proxy_server = ProxyServer::new(
             self.remote_addr.clone(),
             self.local_addr.clone(),
@@ -63,7 +63,6 @@ impl CommandApply for Proxy {
     }
 }
 
-#[allow(dead_code)]
 pub struct ProxyServer {
     addr: String,
     local_addr: String,
@@ -81,7 +80,7 @@ impl ProxyServer {
         }
     }
 
-    pub async fn start(self) -> crate::Result<()> {
+    pub async fn start(self) -> anyhow::Result<()> {
         let listener = TcpListener::bind(&self.addr).await?;
         tokio::spawn(async move {
             if let Err(e) = self.run(listener).await {
@@ -91,7 +90,7 @@ impl ProxyServer {
         Ok(())
     }
 
-    async fn run(&self, listener: TcpListener) -> crate::Result<()> {
+    async fn run(&self, listener: TcpListener) -> anyhow::Result<()> {
         loop {
             let (ts, _) = listener.accept().await?;
             info!("accept proxy conn");
@@ -118,40 +117,4 @@ impl ProxyServer {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use tokio::sync::mpsc;
-
-    use crate::logs::init_log;
-    use crate::rathole::cmd::proxy::ProxyServer;
-    use crate::rathole::context::{CommandSender, Context};
-
-    // #[tokio::test]
-    #[allow(dead_code)]
-    async fn test_proxy() {
-        init_log();
-        let (sender, mut receiver) = mpsc::channel(128);
-        let command_sender = Arc::new(CommandSender::new("hash".to_string(), sender));
-        let context = Context::new(command_sender);
-        let proxy_server = ProxyServer::new("127.0.0.1:6777".to_string(), "".to_string(), context);
-        tokio::spawn(async move {
-            if let Err(err) = proxy_server.start().await {
-                error!("dial conn err : {:?}", err);
-            }
-        });
-        loop {
-            let cmd = receiver.recv().await;
-            match cmd {
-                Some((req_id, cmd, rc)) => {
-                    info!("{},{:?}", req_id, cmd);
-                    if let Some(s) = rc {
-                        info!("send ok");
-                        let _a = s.send(Ok(()));
-                    }
-                }
-                None => panic!("channel close"),
-            }
-        }
-    }
-}
+mod tests {}

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, copy_bidirectional};
+use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
 
@@ -56,16 +56,27 @@ impl SocksStream {
     async fn handle(&mut self, dr: Arc<dyn DialRemote>) -> anyhow::Result<()> {
         self.handshake().await.context("Socks Can't handshake")?;
 
-        let addr = self.read_request().await.context("Socks Can't read request")?;
+        let addr = self
+            .read_request()
+            .await
+            .context("Socks Can't read request")?;
 
-        match dr.dial(addr).await.context("Socks can't dial remote addr")? {
+        match dr
+            .dial(addr)
+            .await
+            .context("Socks can't dial remote addr")?
+        {
             TCP(mut rts) => {
                 self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED).await?;
-                copy_bidirectional(&mut rts, &mut self.ts).await.context("Socks io copy err")?;
+                copy_bidirectional(&mut rts, &mut self.ts)
+                    .await
+                    .context("Socks io copy err")?;
             }
             TLS(mut rts) => {
                 self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED).await?;
-                copy_bidirectional(&mut rts, &mut self.ts).await.context("Socks io copy err")?;
+                copy_bidirectional(&mut rts, &mut self.ts)
+                    .await
+                    .context("Socks io copy err")?;
             }
         };
 
@@ -129,7 +140,10 @@ impl SocksStream {
             0,
         ];
         debug!("Reply [buf={buf:?}]", buf = buf,);
-        self.ts.write_all(buf.as_ref()).await.context("Socks can't reply, write reply err")?;
+        self.ts
+            .write_all(buf.as_ref())
+            .await
+            .context("Socks can't reply, write reply err")?;
         Ok(())
     }
 }
@@ -149,8 +163,13 @@ pub struct SocksDial {}
 #[async_trait]
 impl DialRemote for SocksDial {
     async fn dial(&self, ba: ByteAddr) -> anyhow::Result<DialStream> {
-        let addr_str = ba.to_socket_addr().await.context("ByteAddr can't cover to socket addr")?;
-        let tts = TcpStream::connect(addr_str).await.context(format!("Socks can't connect addr {}", addr_str))?;
+        let addr_str = ba
+            .to_socket_addr()
+            .await
+            .context("ByteAddr can't cover to socket addr")?;
+        let tts = TcpStream::connect(addr_str)
+            .await
+            .context(format!("Socks can't connect addr {}", addr_str))?;
         Ok(DialStream::TCP(Box::new(tts)))
     }
 }
@@ -182,7 +201,9 @@ impl TrojanDial {
 #[async_trait]
 impl DialRemote for TrojanDial {
     async fn dial(&self, ba: ByteAddr) -> anyhow::Result<DialStream> {
-        let mut tts = TcpStream::connect(&self.remote).await.context(format!("Trojan can't connect remote {}", &self.remote))?;
+        let mut tts = TcpStream::connect(&self.remote)
+            .await
+            .context(format!("Trojan can't connect remote {}", &self.remote))?;
         let mut buf: Vec<u8> = vec![];
         buf.extend_from_slice(self.hash.as_bytes());
         buf.extend_from_slice(&consts::CRLF);
@@ -191,11 +212,19 @@ impl DialRemote for TrojanDial {
 
         if self.ssl_enable {
             let server_name = make_server_name(self.domain.as_str())?;
-            let mut ssl_tts = make_tls_connector().connect(server_name, tts).await.context("Trojan can't connect tls")?;
-            ssl_tts.write_all(buf.as_slice()).await.context("Can't write trojan")?;
+            let mut ssl_tts = make_tls_connector()
+                .connect(server_name, tts)
+                .await
+                .context("Trojan can't connect tls")?;
+            ssl_tts
+                .write_all(buf.as_slice())
+                .await
+                .context("Can't write trojan")?;
             Ok(TLS(Box::new(ssl_tts)))
         } else {
-            tts.write_all(buf.as_slice()).await.context("Can't write trojan")?;
+            tts.write_all(buf.as_slice())
+                .await
+                .context("Can't write trojan")?;
             Ok(TCP(Box::new(tts)))
         }
     }
@@ -257,7 +286,7 @@ impl ByteAddr {
                     .await
                     .context("Can't lookup host")?
                     .next()
-                    .ok_or(anyhow!("Can't fetch DNS to the domain."))
+                    .ok_or_else(|| anyhow!("Can't fetch DNS to the domain."))
                     .unwrap();
                 Ok(sa)
             }
@@ -296,8 +325,8 @@ impl ByteAddr {
     }
 
     pub async fn read_addr<T>(stream: &mut T, cmd: u8, atyp: u8) -> anyhow::Result<ByteAddr>
-        where
-            T: AsyncRead + Unpin,
+    where
+        T: AsyncRead + Unpin,
     {
         let addr = match atyp {
             socks_consts::SOCKS5_ADDR_TYPE_IPV4 => ByteAddr::V4(

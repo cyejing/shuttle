@@ -24,7 +24,7 @@ impl Dial {
 }
 
 impl CommandParse<Dial> for Dial {
-    fn parse_frame(parse: &mut Parse) -> crate::Result<Dial> {
+    fn parse_frame(parse: &mut Parse) -> anyhow::Result<Dial> {
         let conn_id = parse.next_int()?;
         let addr = parse.next_string()?;
         Ok(Self::new(conn_id, addr))
@@ -32,7 +32,7 @@ impl CommandParse<Dial> for Dial {
 }
 
 impl CommandTo for Dial {
-    fn to_frame(&self) -> crate::Result<Frame> {
+    fn to_frame(&self) -> anyhow::Result<Frame> {
         let mut f = Frame::array();
         f.push_bulk(Bytes::from(Self::COMMAND_NAME));
         f.push_int(self.conn_id);
@@ -43,7 +43,7 @@ impl CommandTo for Dial {
 
 #[async_trait]
 impl CommandApply for Dial {
-    async fn apply(&self, context: Context) -> crate::Result<Option<Resp>> {
+    async fn apply(&self, context: Context) -> anyhow::Result<Option<Resp>> {
         let dial_conn = DialConn::new(self.conn_id, self.addr.clone());
         if let Err(err) = dial_conn.start(context).await {
             error!("dial conn err : {:?}", err);
@@ -62,7 +62,7 @@ impl DialConn {
         DialConn { addr, conn_id }
     }
 
-    pub async fn start(&self, mut context: Context) -> crate::Result<()> {
+    pub async fn start(&self, mut context: Context) -> anyhow::Result<()> {
         let stream = TcpStream::connect(&self.addr).await?;
         let conn_id = self.conn_id;
 

@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use bytes::{Buf, Bytes};
 use std::convert::TryInto;
 use std::io::Cursor;
@@ -19,7 +20,7 @@ pub enum Frame {
 pub enum Error {
     Incomplete,
 
-    Other(crate::Error),
+    Other(anyhow::Error),
 }
 
 #[derive(Debug)]
@@ -31,7 +32,7 @@ pub struct Parse {
 pub enum ParseError {
     EndOfStream,
 
-    Other(crate::Error),
+    Other(anyhow::Error),
 }
 
 impl Frame {
@@ -57,7 +58,6 @@ impl Frame {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn push_int(&mut self, value: u64) {
         match self {
             Frame::Array(vec) => {
@@ -79,7 +79,7 @@ impl Frame {
     }
 
     /// Checks if an entire message can be decoded from `src`
-    pub fn check(src: &mut Cursor<&[u8]>) -> Result<(), Error> {
+    pub fn check(src: &mut Cursor<&[u8]>) -> anyhow::Result<(), Error> {
         match get_u8(src)? {
             b'+' => {
                 get_line(src)?;
@@ -118,7 +118,7 @@ impl Frame {
         }
     }
 
-    pub fn parse(src: &mut Cursor<&[u8]>) -> Result<Frame, Error> {
+    pub fn parse(src: &mut Cursor<&[u8]>) -> anyhow::Result<Frame, Error> {
         match get_u8(src)? {
             b'+' => {
                 // Read the line and convert it to `Vec<u8>`
@@ -181,15 +181,10 @@ impl Frame {
             _ => unimplemented!(),
         }
     }
-
-    #[allow(dead_code)]
-    pub(crate) fn to_error(&self) -> crate::Error {
-        format!("unexpected frame: {}", self).into()
-    }
 }
 
 impl Parse {
-    pub(crate) fn new(frame: Frame) -> Result<Parse, ParseError> {
+    pub(crate) fn new(frame: Frame) -> anyhow::Result<Parse, ParseError> {
         let array = match frame {
             Frame::Array(array) => array,
             frame => return Err(format!("protocol error; expected array, got {:?}", frame).into()),
@@ -200,11 +195,11 @@ impl Parse {
         })
     }
 
-    pub fn next_part(&mut self) -> Result<Frame, ParseError> {
+    pub fn next_part(&mut self) -> anyhow::Result<Frame, ParseError> {
         self.parts.next().ok_or(ParseError::EndOfStream)
     }
 
-    pub(crate) fn next_string(&mut self) -> Result<String, ParseError> {
+    pub(crate) fn next_string(&mut self) -> anyhow::Result<String, ParseError> {
         match self.next_part()? {
             Frame::Simple(s) => Ok(s),
             Frame::Bulk(data) => str::from_utf8(&data[..])
@@ -219,7 +214,7 @@ impl Parse {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn next_bytes(&mut self) -> Result<Bytes, ParseError> {
+    pub(crate) fn next_bytes(&mut self) -> anyhow::Result<Bytes, ParseError> {
         match self.next_part()? {
             Frame::Simple(s) => Ok(Bytes::from(s.into_bytes())),
             Frame::Bulk(data) => Ok(data),
@@ -232,7 +227,7 @@ impl Parse {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn next_int(&mut self) -> Result<u64, ParseError> {
+    pub(crate) fn next_int(&mut self) -> anyhow::Result<u64, ParseError> {
         use atoi::atoi;
 
         const MSG: &str = "protocol error; invalid number";
@@ -245,7 +240,7 @@ impl Parse {
         }
     }
 
-    pub(crate) fn finish(&mut self) -> Result<(), ParseError> {
+    pub(crate) fn finish(&mut self) -> anyhow::Result<(), ParseError> {
         if self.parts.next().is_none() {
             Ok(())
         } else {
@@ -291,7 +286,7 @@ impl fmt::Display for Frame {
     }
 }
 
-fn peek_u8(src: &mut Cursor<&[u8]>) -> Result<u8, Error> {
+fn peek_u8(src: &mut Cursor<&[u8]>) -> anyhow::Result<u8, Error> {
     if !src.has_remaining() {
         return Err(Error::Incomplete);
     }
@@ -299,7 +294,7 @@ fn peek_u8(src: &mut Cursor<&[u8]>) -> Result<u8, Error> {
     Ok(src.chunk()[0])
 }
 
-fn get_u8(src: &mut Cursor<&[u8]>) -> Result<u8, Error> {
+fn get_u8(src: &mut Cursor<&[u8]>) -> anyhow::Result<u8, Error> {
     if !src.has_remaining() {
         return Err(Error::Incomplete);
     }
@@ -307,7 +302,7 @@ fn get_u8(src: &mut Cursor<&[u8]>) -> Result<u8, Error> {
     Ok(src.get_u8())
 }
 
-fn skip(src: &mut Cursor<&[u8]>, n: usize) -> Result<(), Error> {
+fn skip(src: &mut Cursor<&[u8]>, n: usize) -> anyhow::Result<(), Error> {
     if src.remaining() < n {
         return Err(Error::Incomplete);
     }
@@ -317,7 +312,7 @@ fn skip(src: &mut Cursor<&[u8]>, n: usize) -> Result<(), Error> {
 }
 
 /// Read a new-line terminated decimal
-fn get_decimal(src: &mut Cursor<&[u8]>) -> Result<u64, Error> {
+fn get_decimal(src: &mut Cursor<&[u8]>) -> anyhow::Result<u64, Error> {
     use atoi::atoi;
 
     let line = get_line(src)?;
@@ -326,7 +321,7 @@ fn get_decimal(src: &mut Cursor<&[u8]>) -> Result<u64, Error> {
 }
 
 /// Find a line
-fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], Error> {
+fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> anyhow::Result<&'a [u8], Error> {
     // Scan the bytes directly
     let start = src.position() as usize;
     // Scan to the second to last byte
@@ -347,7 +342,7 @@ fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], Error> {
 
 impl From<String> for Error {
     fn from(src: String) -> Error {
-        Error::Other(src.into())
+        Error::Other(anyhow!(src))
     }
 }
 
@@ -382,7 +377,7 @@ impl fmt::Display for Error {
 
 impl From<String> for ParseError {
     fn from(src: String) -> ParseError {
-        ParseError::Other(src.into())
+        ParseError::Other(anyhow!(src))
     }
 }
 

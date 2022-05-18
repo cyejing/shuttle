@@ -20,7 +20,7 @@ impl Exchange {
 }
 
 impl CommandParse<Exchange> for Exchange {
-    fn parse_frame(parse: &mut Parse) -> crate::Result<Exchange> {
+    fn parse_frame(parse: &mut Parse) -> anyhow::Result<Exchange> {
         let conn_id = parse.next_int()?;
         let body = parse.next_bytes()?;
         Ok(Exchange::new(conn_id, body))
@@ -28,7 +28,7 @@ impl CommandParse<Exchange> for Exchange {
 }
 
 impl CommandTo for Exchange {
-    fn to_frame(&self) -> crate::Result<Frame> {
+    fn to_frame(&self) -> anyhow::Result<Frame> {
         let mut f = Frame::array();
         f.push_bulk(Bytes::from(Self::COMMAND_NAME));
         f.push_int(self.conn_id);
@@ -39,7 +39,7 @@ impl CommandTo for Exchange {
 
 #[async_trait]
 impl CommandApply for Exchange {
-    async fn apply(&self, mut context: Context) -> crate::Result<Option<Resp>> {
+    async fn apply(&self, mut context: Context) -> anyhow::Result<Option<Resp>> {
         let conn_id = self.conn_id;
         let bytes = self.body.clone();
         context.with_conn_id(conn_id);

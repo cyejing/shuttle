@@ -1,3 +1,4 @@
+use anyhow::{anyhow, bail};
 use std::io::Cursor;
 use std::sync::Arc;
 
@@ -49,22 +50,18 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
         }
     }
 
-    pub async fn dispatch(&mut self) -> crate::Result<()> {
+    pub async fn dispatch(&mut self) -> anyhow::Result<()> {
         loop {
             tokio::select! {
                 r1 = Self::apply_command(
                     &mut self.command_read,
                     self.context.clone(),
-                ) => {
-                    r1?
-                },
+                ) => r1?,
                 r2 = Self::recv_command(
                     &mut self.command_write,
                     &mut self.receiver,
                     self.context.clone(),
-                ) => {
-                    r2?
-                },
+                ) => r2?,
             }
         }
     }
@@ -72,7 +69,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
     async fn apply_command(
         command_read: &mut CommandRead<T>,
         context: Context,
-    ) -> crate::Result<()> {
+    ) -> anyhow::Result<()> {
         let mut nc = context.clone();
 
         let (req_id, cmd) = command_read.read_command().await?;
@@ -90,7 +87,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
         command_write: &mut CommandWrite<T>,
         receiver: &mut mpsc::Receiver<CommandChannel>,
         mut context: Context,
-    ) -> crate::Result<()> {
+    ) -> anyhow::Result<()> {
         let oc = receiver.recv().await;
         match oc {
             Some((req_id, cmd, rc)) => {
@@ -98,7 +95,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
                 context.set_req(rc).await;
                 command_write.write_command(req_id, cmd).await
             }
-            None => Err("cmd receiver close".into()),
+            None => Err(anyhow!("cmd receiver close")),
         }
     }
 
@@ -115,26 +112,26 @@ impl<T: AsyncRead> CommandRead<T> {
         }
     }
 
-    pub async fn read_command(&mut self) -> crate::Result<(u64, Command)> {
+    pub async fn read_command(&mut self) -> anyhow::Result<(u64, Command)> {
         let f = self.read_frame().await?;
         info!("read frame : {}", f);
         let (req_id, cmd) = Command::from_frame(f)?;
         Ok((req_id, cmd))
     }
 
-    async fn read_frame(&mut self) -> crate::Result<Frame> {
+    async fn read_frame(&mut self) -> anyhow::Result<Frame> {
         loop {
             if let Some(frame) = self.parse_frame()? {
                 return Ok(frame);
             }
 
             if 0 == self.read.read_buf(&mut self.buffer).await? {
-                return Err("connection reset by peer".into());
+                bail!("connection reset by peer");
             }
         }
     }
 
-    fn parse_frame(&mut self) -> crate::Result<Option<Frame>> {
+    fn parse_frame(&mut self) -> anyhow::Result<Option<Frame>> {
         use crate::rathole::frame::Error::Incomplete;
 
         let mut buf = Cursor::new(&self.buffer[..]);
@@ -165,7 +162,7 @@ impl<T: AsyncWrite> CommandWrite<T> {
         }
     }
 
-    pub async fn write_command(&mut self, req_id: u64, cmd: Command) -> crate::Result<()> {
+    pub async fn write_command(&mut self, req_id: u64, cmd: Command) -> anyhow::Result<()> {
         let frame = cmd.to_frame(req_id)?;
 
         info!("write frame : {}", frame);
@@ -173,7 +170,7 @@ impl<T: AsyncWrite> CommandWrite<T> {
         Ok(())
     }
 
-    async fn write_frame(&mut self, frame: &Frame) -> io::Result<()> {
+    async fn write_frame(&mut self, frame: &Frame) -> anyhow::Result<()> {
         match frame {
             Frame::Array(val) => {
                 self.write.write_u8(b'*').await?;
@@ -187,11 +184,12 @@ impl<T: AsyncWrite> CommandWrite<T> {
             _ => self.write_value(frame).await?,
         }
 
-        self.write.flush().await
+        self.write.flush().await?;
+        Ok(())
     }
 
     /// Write a frame literal to the stream
-    async fn write_value(&mut self, frame: &Frame) -> io::Result<()> {
+    async fn write_value(&mut self, frame: &Frame) -> anyhow::Result<()> {
         match frame {
             Frame::Simple(val) => {
                 self.write.write_u8(b'+').await?;
@@ -225,7 +223,7 @@ impl<T: AsyncWrite> CommandWrite<T> {
     }
 
     /// Write a decimal frame to the stream
-    async fn write_decimal(&mut self, val: u64) -> io::Result<()> {
+    async fn write_decimal(&mut self, val: u64) -> anyhow::Result<()> {
         use std::io::Write;
 
         let mut buf = [0u8; 20];
@@ -271,7 +269,7 @@ mod tests {
         let frame = Frame::Array(vec![
             Frame::Simple("hello".to_string()),
             Frame::Integer(2),
-            Frame::Bulk(Bytes::from(vec![0x01, 0x02])),
+            Frame::Bulk(Bytes::from(vec![0x65, 0x66])),
         ]);
         let f = frame_write_read(&frame).await;
         assert_eq!(format!("{:?}", frame), format!("{:?}", f))

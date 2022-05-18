@@ -6,6 +6,7 @@ use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::unknown::Unknown;
 use crate::rathole::context::Context;
 use crate::rathole::frame::{Frame, Parse};
+use anyhow::anyhow;
 use async_trait::async_trait;
 use std::fmt::Debug;
 
@@ -27,7 +28,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn from_frame(frame: Frame) -> crate::Result<(u64, Command)> {
+    pub fn from_frame(frame: Frame) -> anyhow::Result<(u64, Command)> {
         let mut parse = Parse::new(frame)?;
         let command_name = parse.next_string()?.to_lowercase();
         let command = match &command_name[..] {
@@ -46,7 +47,7 @@ impl Command {
         Ok((req_id, command))
     }
 
-    pub async fn apply(self, context: Context) -> crate::Result<Option<Command>> {
+    pub async fn apply(self, context: Context) -> anyhow::Result<Option<Command>> {
         use Command::*;
 
         let resp = match self {
@@ -61,7 +62,7 @@ impl Command {
         Ok(oc)
     }
 
-    pub fn to_frame(self, req_id: u64) -> crate::Result<Frame> {
+    pub fn to_frame(self, req_id: u64) -> anyhow::Result<Frame> {
         use Command::*;
 
         let f = match self {
@@ -70,23 +71,23 @@ impl Command {
             Ping(ping) => ping.to_frame()?.push_req_id(req_id),
             Proxy(proxy) => proxy.to_frame()?.push_req_id(req_id),
             Resp(resp) => resp.to_frame()?.push_req_id(req_id),
-            _ => return Err("undo".into()),
+            _ => return Err(anyhow!("command undo")),
         };
         Ok(f)
     }
 }
 
 pub trait CommandParse<T> {
-    fn parse_frame(parse: &mut Parse) -> crate::Result<T>;
+    fn parse_frame(parse: &mut Parse) -> anyhow::Result<T>;
 }
 
 #[async_trait]
 pub trait CommandApply {
-    async fn apply(&self, context: Context) -> crate::Result<Option<Resp>>;
+    async fn apply(&self, context: Context) -> anyhow::Result<Option<Resp>>;
 }
 
 pub trait CommandTo {
-    fn to_frame(&self) -> crate::Result<Frame>;
+    fn to_frame(&self) -> anyhow::Result<Frame>;
 }
 
 #[cfg(test)]

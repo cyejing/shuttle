@@ -120,7 +120,7 @@ impl ClientConfig {
 fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {
     if let Some(pb) = path {
         let path_str = pb.to_str().unwrap();
-        info!("Open config file : {}", path_str);
+        info!("config file : {}", path_str);
         File::open(pb.as_path())
             .context(format!("open config file {:?} err", path_str))
             .unwrap()
@@ -128,7 +128,7 @@ fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {
         let mut of: Option<File> = None;
         for path in &default_paths {
             if let Ok(file) = File::open(*path) {
-                info!("open config file : {}", *path);
+                info!("config file : {}", *path);
                 of = Some(file);
                 break;
             }

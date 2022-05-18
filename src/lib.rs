@@ -9,10 +9,6 @@ pub mod server;
 pub mod socks;
 pub mod store;
 
-pub type Error = Box<dyn std::error::Error + Send + Sync>;
-
-pub type Result<T> = std::result::Result<T, Error>;
-
 pub mod logs {
     use log::LevelFilter;
 

@@ -16,7 +16,7 @@ impl Unknown {
 
 #[async_trait]
 impl CommandApply for Unknown {
-    async fn apply(&self, _context: Context) -> crate::Result<Option<Resp>> {
+    async fn apply(&self, _context: Context) -> anyhow::Result<Option<Resp>> {
         let resp = Resp::Err(format!("ERR unknown command '{}'", self.command_name));
         Ok(Some(resp))
     }

@@ -26,6 +26,11 @@ impl ServerStore {
     pub(crate) async fn get_cmd_sender(&self, hash: &String) -> Option<Arc<CommandSender>> {
         self.cmd_map.read().await.get(hash).cloned()
     }
+
+    pub(crate) async fn remove_cmd_sender(&self, hash: &String) {
+        let r = self.cmd_map.write().await.remove(hash);
+        drop(r);
+    }
 }
 
 impl Default for ServerStore {

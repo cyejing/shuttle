@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use bytes::{Bytes, BytesMut};
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
@@ -17,10 +17,10 @@ pub mod context;
 pub mod dispatcher;
 pub mod frame;
 
-pub type ReqChannel = Option<oneshot::Sender<crate::Result<()>>>;
+pub type ReqChannel = Option<oneshot::Sender<anyhow::Result<()>>>;
 pub type CommandChannel = (u64, Command, ReqChannel);
 
-pub async fn start_rathole(cc: ClientConfig) -> crate::Result<()> {
+pub async fn start_rathole(cc: ClientConfig) -> anyhow::Result<()> {
     let mut stream = TcpStream::connect(&cc.remote_addr)
         .await
         .context(format!("Can't connect remote addr {}", &cc.remote_addr))?;
@@ -28,12 +28,16 @@ pub async fn start_rathole(cc: ClientConfig) -> crate::Result<()> {
     let mut buf: Vec<u8> = vec![];
     buf.extend_from_slice(cc.hash.as_bytes());
     buf.extend_from_slice(&consts::CRLF);
-    stream.write_all(buf.as_slice()).await.context("Can't write rathole hash")?;
+    stream
+        .write_all(buf.as_slice())
+        .await
+        .context("Can't write rathole hash")?;
 
     let mut dispatcher = Dispatcher::new(stream, cc.hash);
     let command_sender = dispatcher.get_command_sender();
 
-    let f = tokio::spawn(async move { dispatcher.dispatch().await });
+    let f =
+        tokio::spawn(async move { dispatcher.dispatch().await.context("Rathole dispatch end") });
 
     for hole in cc.holes {
         let open_proxy = Command::Proxy(Proxy::new(
@@ -54,7 +58,7 @@ async fn exchange_copy(
     ts: TcpStream,
     mut rx: mpsc::Receiver<Bytes>,
     context: context::Context,
-) -> crate::Result<()> {
+) -> anyhow::Result<()> {
     let (mut r, mut w) = io::split(ts);
     info!(
         "start stream copy by exchange conn_id: {:?}",
@@ -68,7 +72,7 @@ async fn exchange_copy(
     }
 }
 
-async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: context::Context) -> crate::Result<()> {
+async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: context::Context) -> anyhow::Result<()> {
     let mut buf = BytesMut::with_capacity(4 * 1024);
     let len = r.read_buf(&mut buf).await?;
     if len > 0 {
@@ -78,23 +82,23 @@ async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: context::Context) -> c
     } else {
         let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), Bytes::new()));
         context.command_sender.send(exchange).await?;
-        Err("exchange local conn EOF".into())
+        Err(anyhow!("exchange local conn EOF"))
     }
 }
 
 async fn write_bytes(
     w: &mut WriteHalf<TcpStream>,
     rx: &mut mpsc::Receiver<Bytes>,
-) -> crate::Result<()> {
+) -> anyhow::Result<()> {
     if let Some(bytes) = rx.recv().await {
         if bytes.is_empty() {
-            Err("exchange remote conn close".into())
+            Err(anyhow!("exchange remote conn close"))
         } else {
             w.write_all(&bytes).await?;
             Ok(())
         }
     } else {
-        Err("exchange receiver none".into())
+        Err(anyhow!("exchange receiver none"))
     }
 }
 

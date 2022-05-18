@@ -87,8 +87,13 @@ impl ConnSender {
         ConnSender { conn_id, sender }
     }
 
-    pub async fn send(&self, byte: Bytes) -> crate::Result<()> {
-        Ok(self.sender.send(byte).await?)
+    pub async fn send(&self, byte: Bytes) -> anyhow::Result<()> {
+        use anyhow::Context;
+
+        self.sender
+            .send(byte)
+            .await
+            .context("Can't send byte to conn channel")
     }
 }
 
@@ -109,16 +114,16 @@ impl CommandSender {
         }
     }
 
-    pub async fn send(&self, cmd: Command) -> crate::Result<()> {
+    pub async fn send(&self, cmd: Command) -> anyhow::Result<()> {
         let req_id = self.id_adder.add_and_get().await;
         Ok(self.sender.send((req_id, cmd, None)).await?)
     }
 
-    pub async fn send_with_id(&self, req_id: u64, cmd: Command) -> crate::Result<()> {
+    pub async fn send_with_id(&self, req_id: u64, cmd: Command) -> anyhow::Result<()> {
         Ok(self.sender.send((req_id, cmd, None)).await?)
     }
 
-    pub async fn send_sync(&self, cmd: Command) -> crate::Result<()> {
+    pub async fn send_sync(&self, cmd: Command) -> anyhow::Result<()> {
         let (tx, rx) = oneshot::channel();
         let req_id = self.id_adder.add_and_get().await;
         self.sender.send((req_id, cmd, Some(tx))).await?;

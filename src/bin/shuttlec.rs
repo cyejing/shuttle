@@ -5,10 +5,10 @@ use std::time::Duration;
 use clap::Parser;
 use log::{error, info};
 
-use shuttle::{rathole, socks};
 use shuttle::config::ClientConfig;
 use shuttle::logs::init_log;
 use shuttle::socks::TrojanDial;
+use shuttle::{rathole, socks};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -45,7 +45,7 @@ async fn start_rathole(cc: ClientConfig) {
                 backoff = 1200
             }
         }
-        info!("Retry after {} millis",backoff);
+        info!("Retry after {} millis", backoff);
         tokio::time::sleep(Duration::from_millis(backoff)).await;
 
         backoff *= 2;

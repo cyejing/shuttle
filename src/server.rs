@@ -1,4 +1,4 @@
-use anyhow::{bail, Context};
+use anyhow::{anyhow, Context};
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -191,21 +191,24 @@ impl ServerHandler {
         stream: &mut T,
     ) -> anyhow::Result<()> {
         let [_cr, _cf, cmd, atyp] = read_exact!(stream, [0u8; 4])?;
-        let byte_addr = ByteAddr::read_addr(stream, cmd, atyp).await.context("Trojan Can't read ByteAddr")?;
+        let byte_addr = ByteAddr::read_addr(stream, cmd, atyp)
+            .await
+            .context("Trojan Can't read ByteAddr")?;
         info!("Requested connection {:?} to {}", self.peer_addr, byte_addr);
-        let socks_addr = byte_addr.to_socket_addr().await.context("Can't cover ByteAddr to SocksAddr")?;
+        let socks_addr = byte_addr
+            .to_socket_addr()
+            .await
+            .context("Can't cover ByteAddr to SocksAddr")?;
 
-        let mut cs = TcpStream::connect(socks_addr).await.context(format!("Trojan can't connect addr {}", socks_addr))?;
+        let mut cs = TcpStream::connect(socks_addr)
+            .await
+            .context(format!("Trojan can't connect addr {}", socks_addr))?;
 
         let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
 
         tokio::select! {
-            res = tokio::io::copy_bidirectional(stream, &mut cs) => {
-                res.context("Trojan io copy end")?;
-            },
-            _ = self.shutdown.recv() => {
-                debug!("recv shutdown signal");
-            }
+            r = tokio::io::copy_bidirectional(stream, &mut cs) => {r.context("Trojan io copy end")?;},
+            _ = self.shutdown.recv() => debug!("recv shutdown signal"),
         }
         Ok(())
     }
@@ -217,19 +220,17 @@ impl ServerHandler {
     ) -> anyhow::Result<()> {
         info!("{:?} requested proxy local", self.peer_addr);
         let trojan = self.store.trojan.clone();
-        let mut ls = TcpStream::connect(&trojan.local_addr).await?;
-        ls.write_all(head.as_slice()).await?;
+        let mut ls = TcpStream::connect(&trojan.local_addr)
+            .await
+            .context(format!("Proxy can't connect addr {}", &trojan.local_addr))?;
+
+        ls.write_all(head.as_slice())
+            .await
+            .context("Proxy can't write prefetch head")?;
 
         tokio::select! {
-            res = tokio::io::copy_bidirectional(stream, &mut ls) => {
-                match res{
-                    Ok(s)=>debug!("proxy io copy end {:?}", s),
-                    Err(e)=>error!("proxy io copy err {}", e),
-                }
-            },
-            _ = self.shutdown.recv() => {
-                debug!("recv shutdown signal");
-            }
+            r = tokio::io::copy_bidirectional(stream, &mut ls) => {r.context("Proxy io copy end")?;},
+            _ = self.shutdown.recv() => debug!("recv shutdown signal"),
         }
         Ok(())
     }
@@ -239,16 +240,20 @@ impl ServerHandler {
         stream: &mut T,
     ) -> anyhow::Result<()> {
         let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
-
-        let mut dispatcher =
-            Dispatcher::new(stream, self.hash.clone().expect("rathole hash empty!"));
+        let hash_str = self
+            .hash
+            .clone()
+            .ok_or_else(|| anyhow!("rathole hash empty!"))?;
+        let mut dispatcher = Dispatcher::new(stream, hash_str.clone());
         self.store
             .set_cmd_sender(dispatcher.get_command_sender())
             .await;
-        if let Err(e) = dispatcher.dispatch().await {
-            bail!(e)
-        };
-        Ok(()) //TODO
+        tokio::select! {
+            r = dispatcher.dispatch() => r.context("Rathole dispatch end")?,
+            _ = self.shutdown.recv() => debug!("recv shutdown signal"),
+        }
+        self.store.remove_cmd_sender(&hash_str).await;
+        Ok(())
     }
 }
 
