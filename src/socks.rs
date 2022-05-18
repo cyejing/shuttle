@@ -2,8 +2,8 @@ use std::fmt::{Display, Formatter};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
 
+use anyhow::{anyhow, Context};
 use async_trait::async_trait;
-use log::{debug, error, info};
 use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
@@ -17,39 +17,33 @@ use crate::tls::{make_server_name, make_tls_connector};
 pub async fn start_socks(cc: ClientConfig, dial: Arc<dyn DialRemote>) {
     let listener = TcpListener::bind(&cc.sock_addr)
         .await
-        .expect("Listen socks addr failed");
+        .context(format!("Can't Listen socks addr {}", &cc.sock_addr))
+        .unwrap();
     info!("Listen for socks connections @ {}", &cc.sock_addr);
-    let socks = Socks { cc, listener, dial };
+    let socks = Socks { listener, dial };
     tokio::spawn(async move {
         if let Err(e) = socks.run().await {
-            error!("socks run err : {}", e);
+            error!("Socks run err : {}", e);
         }
     });
 }
 
 struct Socks {
-    #[allow(dead_code)]
-    cc: ClientConfig,
     listener: TcpListener,
     dial: Arc<dyn DialRemote>,
 }
 
 impl Socks {
-    pub async fn run(&self) -> crate::Result<()> {
+    pub async fn run(&self) -> anyhow::Result<()> {
         loop {
-            let res_acc = self.listener.accept().await;
+            let (ts, _) = self.listener.accept().await?;
             let dial = self.dial.clone();
-            match res_acc {
-                Ok((ts, _)) => {
-                    let mut ss = SocksStream { ts };
-                    tokio::spawn(async move {
-                        if let Err(e) = ss.handle(dial).await {
-                            error!("socks stream handle err :{:?}", e);
-                        };
-                    });
-                }
-                Err(e) => error!("accept err :{:?}", e),
-            };
+            let mut ss = SocksStream { ts };
+            tokio::spawn(async move {
+                if let Err(e) = ss.handle(dial).await {
+                    error!("Socks stream handle err : {}", e);
+                };
+            });
         }
     }
 }
@@ -59,26 +53,37 @@ struct SocksStream {
 }
 
 impl SocksStream {
-    async fn handle(&mut self, dr: Arc<dyn DialRemote>) -> crate::Result<()> {
-        self.handshake().await?;
+    async fn handle(&mut self, dr: Arc<dyn DialRemote>) -> anyhow::Result<()> {
+        self.handshake().await.context("Socks Can't handshake")?;
 
-        let addr = self.read_request().await?;
+        let addr = self
+            .read_request()
+            .await
+            .context("Socks Can't read request")?;
 
-        match dr.dial(addr).await? {
+        match dr
+            .dial(addr)
+            .await
+            .context("Socks can't dial remote addr")?
+        {
             TCP(mut rts) => {
                 self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED).await?;
-                copy_bidirectional(&mut rts, &mut self.ts).await?;
+                copy_bidirectional(&mut rts, &mut self.ts)
+                    .await
+                    .context("Socks io copy err")?;
             }
             TLS(mut rts) => {
                 self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED).await?;
-                copy_bidirectional(&mut rts, &mut self.ts).await?;
+                copy_bidirectional(&mut rts, &mut self.ts)
+                    .await
+                    .context("Socks io copy err")?;
             }
         };
 
         Ok(())
     }
 
-    async fn handshake(&mut self) -> crate::Result<()> {
+    async fn handshake(&mut self) -> anyhow::Result<()> {
         let [version, methods_len] = read_exact!(self.ts, [0u8; 2])?;
         debug!(
             "Handshake headers: [version: {version}, methods len: {len}]",
@@ -86,7 +91,7 @@ impl SocksStream {
             len = methods_len,
         );
         if version != socks_consts::SOCKS5_VERSION {
-            return Err(String::from("unknown socks5 version").into());
+            return Err(anyhow!("unknown socks5 version"));
         }
         let methods = read_exact!(self.ts, vec![0u8; methods_len as usize])?;
         debug!("Methods supported sent by the client: {:?}", &methods);
@@ -100,7 +105,7 @@ impl SocksStream {
         Ok(())
     }
 
-    async fn read_request(&mut self) -> crate::Result<ByteAddr> {
+    async fn read_request(&mut self) -> anyhow::Result<ByteAddr> {
         let [version, cmd, rsv, address_type] = read_exact!(self.ts, [0u8; 4])?;
         debug!(
             "Request: [version: {version}, command: {cmd}, rev: {rsv}, address_type: {address_type}]",
@@ -111,17 +116,17 @@ impl SocksStream {
         );
 
         if version != socks_consts::SOCKS5_VERSION {
-            return Err(String::from("unknown socks5 version").into());
+            return Err(anyhow!("unknown socks5 version"));
         }
 
         let addr = ByteAddr::read_addr(&mut self.ts, cmd, address_type).await?;
 
-        info!("requested connection to: {addr}", addr = addr,);
+        info!("Requested connection to: {addr}", addr = addr,);
 
         Ok(addr)
     }
 
-    async fn reply(&mut self, resp: u8) -> crate::Result<()> {
+    async fn reply(&mut self, resp: u8) -> anyhow::Result<()> {
         let buf = vec![
             socks_consts::SOCKS5_VERSION,
             resp,
@@ -135,7 +140,10 @@ impl SocksStream {
             0,
         ];
         debug!("Reply [buf={buf:?}]", buf = buf,);
-        self.ts.write_all(buf.as_ref()).await?;
+        self.ts
+            .write_all(buf.as_ref())
+            .await
+            .context("Socks can't reply, write reply err")?;
         Ok(())
     }
 }
@@ -147,28 +155,21 @@ pub enum DialStream {
 
 #[async_trait]
 pub trait DialRemote: Send + Sync {
-    async fn dial(&self, ba: ByteAddr) -> crate::Result<DialStream>;
+    async fn dial(&self, ba: ByteAddr) -> anyhow::Result<DialStream>;
 }
 
 pub struct SocksDial {}
 
-impl SocksDial {
-    pub fn new() -> Self {
-        SocksDial {}
-    }
-}
-
-impl Default for SocksDial {
-    fn default() -> Self {
-        SocksDial::new()
-    }
-}
-
 #[async_trait]
 impl DialRemote for SocksDial {
-    async fn dial(&self, ba: ByteAddr) -> crate::Result<DialStream> {
-        let addr_str = ba.to_socket_addr().await?;
-        let tts = TcpStream::connect(addr_str).await?;
+    async fn dial(&self, ba: ByteAddr) -> anyhow::Result<DialStream> {
+        let addr_str = ba
+            .to_socket_addr()
+            .await
+            .context("ByteAddr can't cover to socket addr")?;
+        let tts = TcpStream::connect(addr_str)
+            .await
+            .context(format!("Socks can't connect addr {}", addr_str))?;
         Ok(DialStream::TCP(Box::new(tts)))
     }
 }
@@ -199,8 +200,10 @@ impl TrojanDial {
 
 #[async_trait]
 impl DialRemote for TrojanDial {
-    async fn dial(&self, ba: ByteAddr) -> crate::Result<DialStream> {
-        let mut tts = TcpStream::connect(&self.remote).await?;
+    async fn dial(&self, ba: ByteAddr) -> anyhow::Result<DialStream> {
+        let mut tts = TcpStream::connect(&self.remote)
+            .await
+            .context(format!("Trojan can't connect remote {}", &self.remote))?;
         let mut buf: Vec<u8> = vec![];
         buf.extend_from_slice(self.hash.as_bytes());
         buf.extend_from_slice(&consts::CRLF);
@@ -209,11 +212,19 @@ impl DialRemote for TrojanDial {
 
         if self.ssl_enable {
             let server_name = make_server_name(self.domain.as_str())?;
-            let mut ssl_tts = make_tls_connector().connect(server_name, tts).await?;
-            ssl_tts.write_all(buf.as_slice()).await?;
+            let mut ssl_tts = make_tls_connector()
+                .connect(server_name, tts)
+                .await
+                .context("Trojan can't connect tls")?;
+            ssl_tts
+                .write_all(buf.as_slice())
+                .await
+                .context("Can't write trojan")?;
             Ok(TLS(Box::new(ssl_tts)))
         } else {
-            tts.write_all(buf.as_slice()).await?;
+            tts.write_all(buf.as_slice())
+                .await
+                .context("Can't write trojan")?;
             Ok(TCP(Box::new(tts)))
         }
     }
@@ -253,7 +264,7 @@ impl Display for ByteAddr {
 }
 
 impl ByteAddr {
-    pub(crate) async fn to_socket_addr(&self) -> crate::Result<SocketAddr> {
+    pub(crate) async fn to_socket_addr(&self) -> anyhow::Result<SocketAddr> {
         match self {
             ByteAddr::V4(_, _, ip, port) => {
                 let cov_port = (port[0] as u16) << 8 | port[1] as u16;
@@ -272,9 +283,10 @@ impl ByteAddr {
                 let cov_port = (port[0] as u16) << 8 | port[1] as u16;
                 let domain_str = String::from_utf8_lossy(domain);
                 let sa = lookup_host((&domain_str[..], cov_port))
-                    .await?
+                    .await
+                    .context("Can't lookup host")?
                     .next()
-                    .ok_or("Can't fetch DNS to the domain.")
+                    .ok_or_else(|| anyhow!("Can't fetch DNS to the domain."))
                     .unwrap();
                 Ok(sa)
             }
@@ -312,7 +324,7 @@ impl ByteAddr {
         }
     }
 
-    pub async fn read_addr<T>(stream: &mut T, cmd: u8, atyp: u8) -> crate::Result<ByteAddr>
+    pub async fn read_addr<T>(stream: &mut T, cmd: u8, atyp: u8) -> anyhow::Result<ByteAddr>
     where
         T: AsyncRead + Unpin,
     {
@@ -335,7 +347,7 @@ impl ByteAddr {
 
                 ByteAddr::Domain(cmd, atyp, domain, read_exact!(stream, [0u8; 2])?)
             }
-            _ => return Err(String::from("unknown address type").into()),
+            _ => return Err(anyhow!("unknown address type")),
         };
 
         Ok(addr)

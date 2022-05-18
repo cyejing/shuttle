@@ -1,7 +1,7 @@
+use anyhow::{anyhow, Context};
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use log::{debug, error, info};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
@@ -19,7 +19,8 @@ pub async fn start_server(addr: Addr, store: ServerStore) {
     let addr_str = addr.addr;
     let listener = TcpListener::bind(&addr_str)
         .await
-        .expect("bind port failed");
+        .context(format!("Can't bind server port {}", addr_str))
+        .unwrap();
     info!("Server listener addr : {}", &addr_str);
     let acceptor = if addr.ssl_enable {
         let cert_loaded = addr.cert_loaded;
@@ -40,7 +41,7 @@ pub async fn start_server(addr: Addr, store: ServerStore) {
     tokio::spawn(async move {
         if let Err(err) = server.run().await {
             error!(
-                "server [{}] accept connection err : {}",
+                "Server [{}] accept connection err : {}",
                 server.addr_str, err
             );
         }
@@ -56,9 +57,9 @@ struct Server {
 }
 
 impl Server {
-    async fn run(&mut self) -> crate::Result<()> {
+    async fn run(&mut self) -> anyhow::Result<()> {
         loop {
-            let socket = self.accept().await?;
+            let socket = self.accept().await.context("Server Can't accept conn")?;
             let peer_addr = socket
                 .peer_addr()
                 .map(Option::Some)
@@ -66,7 +67,7 @@ impl Server {
 
             let mut handler = ServerHandler {
                 peer_addr,
-                hash: Option::None,
+                hash: None,
                 store: self.store.clone(),
                 shutdown: self.notify_shutdown.subscribe(),
             };
@@ -77,11 +78,11 @@ impl Server {
                         match tls_acc.accept(socket).await {
                             Ok(tls_ts) => {
                                 if let Err(err) = handler.run(tls_ts).await {
-                                    error!("tls connection error : {}", err);
+                                    error!("handler tls connection error : {}", err);
                                 }
                             }
                             Err(e) => {
-                                error!("accept tls connection err :{}", e);
+                                error!("accept tls connection err : {}", e);
                             }
                         };
                     });
@@ -89,7 +90,7 @@ impl Server {
                 None => {
                     tokio::spawn(async move {
                         if let Err(err) = handler.run(socket).await {
-                            error!("tcp connection error : {}", err);
+                            error!("handler tcp connection error : {}", err);
                         }
                     });
                 }
@@ -97,20 +98,20 @@ impl Server {
         }
     }
 
-    async fn accept(&mut self) -> crate::Result<TcpStream> {
-        let mut backoff = 1;
+    async fn accept(&mut self) -> anyhow::Result<TcpStream> {
+        let mut backoff = 100;
 
         loop {
             match self.listener.accept().await {
                 Ok((socket, _)) => return Ok(socket),
                 Err(err) => {
-                    if backoff > 64 {
+                    if backoff > 6400 {
                         return Err(err.into());
                     }
                 }
             }
 
-            tokio::time::sleep(Duration::from_secs(backoff)).await;
+            tokio::time::sleep(Duration::from_millis(backoff)).await;
 
             backoff *= 2;
         }
@@ -128,44 +129,35 @@ impl ServerHandler {
     async fn run<T: AsyncRead + AsyncWrite + Unpin + Send>(
         &mut self,
         mut stream: T,
-    ) -> crate::Result<()> {
+    ) -> anyhow::Result<()> {
         match self.detect_head(&mut stream).await {
-            Ok(ConnType::Trojan) => {
-                self.handle_trojan(&mut stream).await?;
-            }
-            Ok(ConnType::Rathole) => {
-                self.handle_rathole(&mut stream).await?;
-                debug!("detect rathole");
-            }
-            Ok(ConnType::Proxy(head)) => {
-                self.handle_proxy(&mut stream, head).await?;
-            }
-            Err(e) => error!("detect head occur err : {}", e),
+            Ok(ConnType::Trojan) => self.handle_trojan(&mut stream).await,
+            Ok(ConnType::Rathole) => self.handle_rathole(&mut stream).await,
+            Ok(ConnType::Proxy(head)) => self.handle_proxy(&mut stream, head).await,
+            Err(e) => Err(e).context("Can't detect head"),
         }
-
-        Ok(())
     }
 
     async fn detect_head<T: AsyncRead + AsyncWrite + Unpin>(
         &mut self,
         stream: T,
-    ) -> crate::Result<ConnType> {
-        let head = self.read_head(stream).await?;
+    ) -> anyhow::Result<ConnType> {
+        let head = self.read_head(stream).await.context("Can't read head")?;
         if head.len() < 56 {
             return Ok(ConnType::Proxy(head));
         }
-        let hash_str = String::from_utf8(head.clone())?;
+        let hash_str = String::from_utf8(head.clone()).context("Can't stringing hash head")?;
 
         let trojan = self.store.trojan.clone();
         let rathole = self.store.rathole.clone();
 
         return if trojan.password_hash.contains_key(&hash_str) {
             debug!("{} detect trojan", hash_str);
-            self.hash = Option::Some(hash_str);
+            self.hash = Some(hash_str);
             Ok(ConnType::Trojan)
         } else if rathole.password_hash.contains_key(&hash_str) {
             debug!("{} detect rathole", hash_str);
-            self.hash = Option::Some(hash_str);
+            self.hash = Some(hash_str);
             Ok(ConnType::Rathole)
         } else {
             debug!("detect proxy");
@@ -176,7 +168,7 @@ impl ServerHandler {
     async fn read_head<T: AsyncRead + AsyncWrite + Unpin>(
         &self,
         mut stream: T,
-    ) -> crate::Result<Vec<u8>> {
+    ) -> anyhow::Result<Vec<u8>> {
         let mut buf = Vec::new();
         for _i in 0..56 {
             let u81 = stream.read_u8().await?;
@@ -197,26 +189,26 @@ impl ServerHandler {
     async fn handle_trojan<T: AsyncRead + AsyncWrite + Unpin>(
         &mut self,
         stream: &mut T,
-    ) -> crate::Result<()> {
+    ) -> anyhow::Result<()> {
         let [_cr, _cf, cmd, atyp] = read_exact!(stream, [0u8; 4])?;
-        let byte_addr = ByteAddr::read_addr(stream, cmd, atyp).await?;
-        info!("{:?} requested connection to {}", self.peer_addr, byte_addr);
-        let socks_addr = byte_addr.to_socket_addr().await?;
+        let byte_addr = ByteAddr::read_addr(stream, cmd, atyp)
+            .await
+            .context("Trojan Can't read ByteAddr")?;
+        info!("Requested connection {:?} to {}", self.peer_addr, byte_addr);
+        let socks_addr = byte_addr
+            .to_socket_addr()
+            .await
+            .context("Can't cover ByteAddr to SocksAddr")?;
 
-        let mut cs = TcpStream::connect(socks_addr).await?;
+        let mut cs = TcpStream::connect(socks_addr)
+            .await
+            .context(format!("Trojan can't connect addr {}", socks_addr))?;
 
         let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
 
         tokio::select! {
-            res = tokio::io::copy_bidirectional(stream, &mut cs) => {
-                match res{
-                    Ok(s)=>debug!("trojan io copy end {:?}", s),
-                    Err(e)=>error!("trojan io copy err {}", e),
-                }
-            },
-            _ = self.shutdown.recv() => {
-                debug!("recv shutdown signal");
-            }
+            r = tokio::io::copy_bidirectional(stream, &mut cs) => {r.context("Trojan io copy end")?;},
+            _ = self.shutdown.recv() => debug!("recv shutdown signal"),
         }
         Ok(())
     }
@@ -225,22 +217,20 @@ impl ServerHandler {
         &mut self,
         stream: &mut T,
         head: Vec<u8>,
-    ) -> crate::Result<()> {
+    ) -> anyhow::Result<()> {
         info!("{:?} requested proxy local", self.peer_addr);
         let trojan = self.store.trojan.clone();
-        let mut ls = TcpStream::connect(&trojan.local_addr).await?;
-        ls.write_all(head.as_slice()).await?;
+        let mut ls = TcpStream::connect(&trojan.local_addr)
+            .await
+            .context(format!("Proxy can't connect addr {}", &trojan.local_addr))?;
+
+        ls.write_all(head.as_slice())
+            .await
+            .context("Proxy can't write prefetch head")?;
 
         tokio::select! {
-            res = tokio::io::copy_bidirectional(stream, &mut ls) => {
-                match res{
-                    Ok(s)=>debug!("proxy io copy end {:?}", s),
-                    Err(e)=>error!("proxy io copy err {}", e),
-                }
-            },
-            _ = self.shutdown.recv() => {
-                debug!("recv shutdown signal");
-            }
+            r = tokio::io::copy_bidirectional(stream, &mut ls) => {r.context("Proxy io copy end")?;},
+            _ = self.shutdown.recv() => debug!("recv shutdown signal"),
         }
         Ok(())
     }
@@ -248,14 +238,22 @@ impl ServerHandler {
     async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin + Send>(
         &mut self,
         stream: &mut T,
-    ) -> crate::Result<()> {
-        let mut dispatcher = Dispatcher::new(
-            stream,
-            self.hash.clone().expect("rathole hash empty!"),
-            self.store.clone(),
-        );
-        self.store.set_cmd_sender(dispatcher.get_command_sender());
-        dispatcher.dispatch().await
+    ) -> anyhow::Result<()> {
+        let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
+        let hash_str = self
+            .hash
+            .clone()
+            .ok_or_else(|| anyhow!("rathole hash empty!"))?;
+        let mut dispatcher = Dispatcher::new(stream, hash_str.clone());
+        self.store
+            .set_cmd_sender(dispatcher.get_command_sender())
+            .await;
+        tokio::select! {
+            r = dispatcher.dispatch() => r.context("Rathole dispatch end")?,
+            _ = self.shutdown.recv() => debug!("recv shutdown signal"),
+        }
+        self.store.remove_cmd_sender(&hash_str).await;
+        Ok(())
     }
 }
 

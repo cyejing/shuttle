@@ -1,6 +1,7 @@
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::CommandApply;
-use crate::store::ServerStore;
+use crate::rathole::context::Context;
+use async_trait::async_trait;
 
 #[derive(Debug)]
 pub struct Unknown {
@@ -13,8 +14,9 @@ impl Unknown {
     }
 }
 
+#[async_trait]
 impl CommandApply for Unknown {
-    fn apply(&self, _store: ServerStore) -> crate::Result<Option<Resp>> {
+    async fn apply(&self, _context: Context) -> anyhow::Result<Option<Resp>> {
         let resp = Resp::Err(format!("ERR unknown command '{}'", self.command_name));
         Ok(Some(resp))
     }

@@ -25,7 +25,6 @@ addrs:
 #    key: xxx
 #    cert: xxx
   - addr: 127.0.0.1:4880
-logfile: logs/shuttles.log
 trojan:
   local_addr: 127.0.0.1:80 #nginx
   passwords:

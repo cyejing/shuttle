@@ -4,8 +4,10 @@ use crate::rathole::cmd::ping::Ping;
 use crate::rathole::cmd::proxy::Proxy;
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::unknown::Unknown;
+use crate::rathole::context::Context;
 use crate::rathole::frame::{Frame, Parse};
-use crate::store::ServerStore;
+use anyhow::anyhow;
+use async_trait::async_trait;
 use std::fmt::Debug;
 
 pub mod dial;
@@ -22,12 +24,11 @@ pub enum Command {
     Ping(Ping),
     Proxy(Proxy),
     Resp(Resp),
-    RespId(u64, Resp),
     Unknown(Unknown),
 }
 
 impl Command {
-    pub fn from_frame(frame: Frame) -> crate::Result<(u64, Command)> {
+    pub fn from_frame(frame: Frame) -> anyhow::Result<(u64, Command)> {
         let mut parse = Parse::new(frame)?;
         let command_name = parse.next_string()?.to_lowercase();
         let command = match &command_name[..] {
@@ -46,23 +47,22 @@ impl Command {
         Ok((req_id, command))
     }
 
-    pub fn apply(self, store: ServerStore) -> crate::Result<Option<Command>> {
+    pub async fn apply(self, context: Context) -> anyhow::Result<Option<Command>> {
         use Command::*;
 
         let resp = match self {
-            Dial(dial) => dial.apply(store)?,
-            Exchange(exchange) => exchange.apply(store)?,
-            Ping(ping) => ping.apply(store)?,
-            Proxy(proxy) => proxy.apply(store)?,
-            Resp(resp) => resp.apply(store)?,
-            RespId(_, resp) => resp.apply(store)?,
-            Unknown(unknown) => unknown.apply(store)?,
+            Dial(dial) => dial.apply(context).await?,
+            Exchange(exchange) => exchange.apply(context).await?,
+            Ping(ping) => ping.apply(context).await?,
+            Proxy(proxy) => proxy.apply(context).await?,
+            Resp(resp) => resp.apply(context).await?,
+            Unknown(unknown) => unknown.apply(context).await?,
         };
         let oc = resp.map(Command::Resp);
         Ok(oc)
     }
 
-    pub fn to_frame(self, req_id: u64) -> crate::Result<Frame> {
+    pub fn to_frame(self, req_id: u64) -> anyhow::Result<Frame> {
         use Command::*;
 
         let f = match self {
@@ -71,23 +71,23 @@ impl Command {
             Ping(ping) => ping.to_frame()?.push_req_id(req_id),
             Proxy(proxy) => proxy.to_frame()?.push_req_id(req_id),
             Resp(resp) => resp.to_frame()?.push_req_id(req_id),
-            RespId(oid, resp) => resp.to_frame()?.push_req_id(oid),
-            _ => return Err("undo".into()),
+            _ => return Err(anyhow!("command undo")),
         };
         Ok(f)
     }
 }
 
 pub trait CommandParse<T> {
-    fn parse_frame(parse: &mut Parse) -> crate::Result<T>;
+    fn parse_frame(parse: &mut Parse) -> anyhow::Result<T>;
 }
 
+#[async_trait]
 pub trait CommandApply {
-    fn apply(&self, store: ServerStore) -> crate::Result<Option<Resp>>;
+    async fn apply(&self, context: Context) -> anyhow::Result<Option<Resp>>;
 }
 
 pub trait CommandTo {
-    fn to_frame(&self) -> crate::Result<Frame>;
+    fn to_frame(&self) -> anyhow::Result<Frame>;
 }
 
 #[cfg(test)]

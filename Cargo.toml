@@ -1,32 +1,31 @@
 [package]
 name = "shuttle"
-version = "0.0.6"
+version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+log = "0.4"
+env_logger = "0.8"
+
 tokio = { version = "1.17.0", features = ["full"] }
 bytes = "1.1"
 
-log = { version = "0.4", features = ["release_max_level_debug", "max_level_trace"] }
-tracing = "0.1"
-tracing-subscriber = { version="0.3", features = ["local-time", "env-filter"] }
-tracing-appender = "0.2"
+async-trait = "0.1"
+
+anyhow = { version = "1",  features = ["backtrace"] }
 
 tokio-rustls = "0.23"
 rustls-pemfile = "1"
 webpki-roots = "0.22.3"
 
-async-trait = "0.1"
-
-serde = {version="1.0", features=["derive"]}
+clap = { version = "3.1", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
 rust-crypto = "0.2"
-clap = { version = "3.1", features = ["derive"] }
-atoi = "1"
-pretty-hex = "0.3.0"
 
+atoi = "1"
 
 [dev-dependencies]
 reqwest = { version = "0.11", features = ["socks"] }

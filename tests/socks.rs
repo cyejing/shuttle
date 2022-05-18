@@ -1,4 +1,5 @@
 use log::info;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -36,7 +37,7 @@ async fn test_socks() {
 }
 
 async fn start_server() {
-    let config = ServerConfig::load(Option::Some(String::from("tests/examples/shuttles.yaml")));
+    let config = ServerConfig::load(Option::Some(PathBuf::from("tests/examples/shuttles.yaml")));
 
     let config = Rc::new(config);
     let store = ServerStore::from(config.clone());
@@ -45,7 +46,7 @@ async fn start_server() {
 }
 
 async fn start_socks() {
-    let cc = ClientConfig::load(Option::Some(String::from("tests/examples/shuttlec.yaml")));
+    let cc = ClientConfig::load(Option::Some(PathBuf::from("tests/examples/shuttlec.yaml")));
 
     let dial = Arc::new(TrojanDial::new(
         cc.remote_addr.clone(),

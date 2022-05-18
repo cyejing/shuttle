@@ -1,55 +1,61 @@
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
+use crate::rathole::context::Context;
 use crate::rathole::frame::{Frame, Parse};
-use crate::store::ServerStore;
+use async_trait::async_trait;
 use bytes::Bytes;
-use log::error;
 
 #[derive(Debug)]
 pub struct Exchange {
-    conn_id: String,
+    conn_id: u64,
     body: Bytes,
 }
 
 impl Exchange {
     pub const COMMAND_NAME: &'static str = "exchange";
 
-    pub fn new(conn_id: String, body: Bytes) -> Self {
+    pub fn new(conn_id: u64, body: Bytes) -> Self {
         Exchange { conn_id, body }
     }
 }
 
 impl CommandParse<Exchange> for Exchange {
-    fn parse_frame(parse: &mut Parse) -> crate::Result<Exchange> {
-        let conn_id = parse.next_string()?;
+    fn parse_frame(parse: &mut Parse) -> anyhow::Result<Exchange> {
+        let conn_id = parse.next_int()?;
         let body = parse.next_bytes()?;
         Ok(Exchange::new(conn_id, body))
     }
 }
 
 impl CommandTo for Exchange {
-    fn to_frame(&self) -> crate::Result<Frame> {
+    fn to_frame(&self) -> anyhow::Result<Frame> {
         let mut f = Frame::array();
-        f.push_bulk(Bytes::from(self.conn_id.clone()));
+        f.push_bulk(Bytes::from(Self::COMMAND_NAME));
+        f.push_int(self.conn_id);
         f.push_bulk(self.body.clone());
         Ok(f)
     }
 }
 
+#[async_trait]
 impl CommandApply for Exchange {
-    fn apply(&self, store: ServerStore) -> crate::Result<Option<Resp>> {
-        let op_sender = store.get_conn_sender(&self.conn_id);
+    async fn apply(&self, mut context: Context) -> anyhow::Result<Option<Resp>> {
+        let conn_id = self.conn_id;
+        let bytes = self.body.clone();
+        context.with_conn_id(conn_id);
+        let op_sender = context.get_conn_sender().await;
         match op_sender {
             Some(sender) => {
-                let bytes = self.body.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = sender.send(bytes).await {
-                        error!("send bytes err : {}", e);
-                    }
-                });
-                Ok(Some(Resp::Ok("".to_string())))
+                if let Err(e) = sender.send(bytes).await {
+                    let discard = context.remove_conn_sender().await;
+                    drop(discard);
+                    error!("send bytes err : {}", e);
+                }
             }
-            None => Ok(Some(Resp::Err("conn close".to_string()))),
+            None => {
+                error!("exchange conn close");
+            }
         }
+        Ok(None)
     }
 }
