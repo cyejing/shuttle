@@ -78,7 +78,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
         let op_resp = cmd.apply(nc).await.context("Can't apply command")?;
 
         if let Some(resp) = op_resp {
-            context.command_sender.send_with_id(req_id, resp).await?
+            trace!("Send resp {:?}",resp);
+            context.command_sender.send_with_id(req_id, resp).await.context("Can't send command resp")?
         }
         Ok(())
     }
@@ -89,11 +90,12 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
         mut context: context::Context,
     ) -> anyhow::Result<()> {
         let oc = receiver.recv().await;
+        trace!("recv command {:?}", oc);
         match oc {
             Some((req_id, cmd, rc)) => {
                 context.with_req_id(req_id);
                 context.set_req(rc).await;
-                command_write.write_command(req_id, cmd).await
+                command_write.write_command(req_id, cmd).await.context("Can't write command")
             }
             None => Err(anyhow!("cmd receiver close")),
         }
@@ -113,19 +115,19 @@ impl<T: AsyncRead> CommandRead<T> {
     }
 
     pub async fn read_command(&mut self) -> anyhow::Result<(u64, Command)> {
-        let f = self.read_frame().await?;
+        let f = self.read_frame().await.context("Can't read frame")?;
         trace!("read frame : {}", f);
-        let (req_id, cmd) = Command::from_frame(f)?;
+        let (req_id, cmd) = Command::from_frame(f).context("Can't cover frame to command")?;
         Ok((req_id, cmd))
     }
 
     async fn read_frame(&mut self) -> anyhow::Result<Frame> {
         loop {
-            if let Some(frame) = self.parse_frame()? {
+            if let Some(frame) = self.parse_frame().context("Can't parse frame")? {
                 return Ok(frame);
             }
 
-            if 0 == self.read.read_buf(&mut self.buffer).await? {
+            if 0 == self.read.read_buf(&mut self.buffer).await.context("Can't read buf for frame")? {
                 bail!("connection reset by peer");
             }
         }
@@ -163,17 +165,17 @@ impl<T: AsyncWrite> CommandWrite<T> {
     }
 
     pub async fn write_command(&mut self, req_id: u64, cmd: Command) -> anyhow::Result<()> {
-        let frame = cmd.to_frame(req_id)?;
+        let frame = cmd.to_frame(req_id).context("Can't cover command to frame")?;
 
         trace!("write frame : {}", frame);
-        self.write_frame(&frame).await?;
+        self.write_frame(&frame).await.context("Can't write frame to conn")?;
         Ok(())
     }
 
     async fn write_frame(&mut self, frame: &Frame) -> anyhow::Result<()> {
         match frame {
             Frame::Array(val) => {
-                self.write.write_u8(b'*').await?;
+                self.write.write_u8(b'*').await.context("Can't write byte to conn")?;
 
                 self.write_decimal(val.len() as u64).await?;
 

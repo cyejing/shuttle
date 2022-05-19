@@ -41,7 +41,7 @@ pub async fn start_server(addr: Addr, store: ServerStore) {
     tokio::spawn(async move {
         if let Err(err) = server.run().await {
             error!(
-                "Server [{}] accept connection err : {}",
+                "Server [{}] accept connection err : {:?}",
                 server.addr_str, err
             );
         }
@@ -78,11 +78,11 @@ impl Server {
                         match tls_acc.accept(socket).await {
                             Ok(tls_ts) => {
                                 if let Err(err) = handler.run(tls_ts).await {
-                                    error!("handler tls connection error : {}", err);
+                                    error!("Handler tls connection error : {:?}", err);
                                 }
                             }
                             Err(e) => {
-                                error!("accept tls connection err : {}", e);
+                                error!("Accept tls connection err : {:?}", e);
                             }
                         };
                     });
@@ -90,7 +90,7 @@ impl Server {
                 None => {
                     tokio::spawn(async move {
                         if let Err(err) = handler.run(socket).await {
-                            error!("handler tcp connection error : {}", err);
+                            error!("Handler tcp connection error : {:?}", err);
                         }
                     });
                 }
@@ -126,7 +126,7 @@ struct ServerHandler {
 }
 
 impl ServerHandler {
-    async fn run<T: AsyncRead + AsyncWrite + Unpin + Send>(
+    async fn run<T: AsyncRead + AsyncWrite + Unpin>(
         &mut self,
         mut stream: T,
     ) -> anyhow::Result<()> {
@@ -235,7 +235,7 @@ impl ServerHandler {
         Ok(())
     }
 
-    async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin + Send>(
+    async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin>(
         &mut self,
         stream: &mut T,
     ) -> anyhow::Result<()> {
@@ -248,16 +248,13 @@ impl ServerHandler {
         self.store
             .set_cmd_sender(cs)
             .await;
-        let r = tokio::select! {
-            r = dispatcher.dispatch() => r,
-            _ = self.shutdown.recv() => {
-                debug!("recv shutdown signal");
-                Ok(())
-            },
+        tokio::select! {
+            r = dispatcher.dispatch() => debug!("dispatch end {:?}",r),
+            _ = self.shutdown.recv() => debug!("recv shutdown signal"),
         };
-        // drop(dispatcher);
+        drop(dispatcher);
         self.store.remove_cmd_sender(&hash_str).await;
-        r
+        Ok(())
     }
 }
 

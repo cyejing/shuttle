@@ -2,7 +2,7 @@ use log::{info};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use anyhow::{anyhow, Context};
+use anyhow::{Context};
 
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
