@@ -14,7 +14,7 @@ bytes = "1.1"
 
 async-trait = "0.1"
 
-anyhow = { version = "1",  features = ["backtrace"] }
+anyhow = { version = "1" }
 
 tokio-rustls = "0.23"
 rustls-pemfile = "1"

@@ -5,15 +5,14 @@ use bytes::Bytes;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
+use crate::rathole::{context, exchange_copy};
+use crate::rathole::cmd::{Command, CommandApply, CommandParse, CommandTo};
 use crate::rathole::cmd::dial::Dial;
 use crate::rathole::cmd::resp::Resp;
-use crate::rathole::cmd::{Command, CommandApply, CommandParse, CommandTo};
-use crate::rathole::context::{ConnSender, Context, IdAdder};
-use crate::rathole::exchange_copy;
+use crate::rathole::context::{ConnSender, IdAdder};
 use crate::rathole::frame::{Frame, Parse};
 
 #[derive(Debug)]
-
 pub struct Proxy {
     remote_addr: String,
     local_addr: String,
@@ -50,28 +49,31 @@ impl CommandTo for Proxy {
 
 #[async_trait]
 impl CommandApply for Proxy {
-    async fn apply(&self, context: Context) -> anyhow::Result<Option<Resp>> {
+    async fn apply(&self, context: context::Context) -> anyhow::Result<Option<Resp>> {
         let proxy_server = ProxyServer::new(
             self.remote_addr.clone(),
             self.local_addr.clone(),
             context.clone(),
         );
-        if let Err(err) = proxy_server.start().await {
-            error!("dial conn err : {:?}", err);
+        match proxy_server.start().await {
+            Ok(_) => Ok(Some(Resp::Ok("ok".to_string()))),
+            Err(e) => {
+                error!("dial conn err : {:?}", e);
+                Ok(Some(Resp::Err(format!("{}", e))))
+            }
         }
-        Ok(Some(Resp::Ok("ok".to_string())))
     }
 }
 
 pub struct ProxyServer {
     addr: String,
     local_addr: String,
-    context: Context,
+    context: context::Context,
     id_adder: IdAdder,
 }
 
 impl ProxyServer {
-    pub fn new(addr: String, local_addr: String, context: Context) -> Self {
+    pub fn new(addr: String, local_addr: String, context: context::Context) -> Self {
         ProxyServer {
             addr,
             local_addr,
@@ -80,17 +82,26 @@ impl ProxyServer {
         }
     }
 
-    pub async fn start(self) -> anyhow::Result<()> {
+    pub async fn start(mut self) -> anyhow::Result<()> {
         let listener = TcpListener::bind(&self.addr).await?;
+        info!("Bind proxy server {}", &self.addr);
+        let mut shutdown = self.context.notify_shutdown.subscribe();
         tokio::spawn(async move {
-            if let Err(e) = self.run(listener).await {
-                error!("proxy run accept conn err: {}", e);
+            tokio::select! {
+                r1 = self.run(listener) => {
+                    if let Err(e) = r1 {
+                        error!("proxy run accept conn err: {}", e);
+                    }
+                },
+                _ = shutdown.recv() =>{
+                    info!("recv shutdown signal")
+                }
             }
         });
         Ok(())
     }
 
-    async fn run(&self, listener: TcpListener) -> anyhow::Result<()> {
+    async fn run(&mut self, listener: TcpListener) -> anyhow::Result<()> {
         loop {
             let (ts, _) = listener.accept().await?;
             info!("accept proxy conn");
@@ -109,8 +120,7 @@ impl ProxyServer {
                 if let Err(e) = exchange_copy(ts, rx, context.clone()).await {
                     error!("exchange bytes err: {}", e);
                 }
-                let discard = context.remove_conn_sender().await;
-                drop(discard);
+                context.remove_conn_sender().await;
             });
         }
     }

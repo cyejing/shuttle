@@ -1,7 +1,8 @@
-use log::info;
+use log::{info};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use anyhow::{Context};
 
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
@@ -11,6 +12,7 @@ use shuttle::logs::init_log;
 use shuttle::socks;
 use shuttle::socks::TrojanDial;
 use shuttle::store::ServerStore;
+
 
 #[tokio::test]
 async fn test_socks() {

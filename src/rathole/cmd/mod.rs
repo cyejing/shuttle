@@ -50,6 +50,7 @@ impl Command {
     pub async fn apply(self, context: Context) -> anyhow::Result<Option<Command>> {
         use Command::*;
 
+        trace!("apply command {:?}", &self);
         let resp = match self {
             Dial(dial) => dial.apply(context).await?,
             Exchange(exchange) => exchange.apply(context).await?,

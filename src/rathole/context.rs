@@ -3,10 +3,11 @@ use crate::rathole::{CommandChannel, ReqChannel};
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex, broadcast};
 
 #[derive(Debug, Clone)]
 pub struct Context {
+    pub notify_shutdown: broadcast::Sender<()>,
     pub command_sender: Arc<CommandSender>,
     pub conn_map: Arc<Mutex<HashMap<u64, Arc<ConnSender>>>>,
     pub req_map: Arc<Mutex<HashMap<u64, ReqChannel>>>,
@@ -16,7 +17,10 @@ pub struct Context {
 
 impl Context {
     pub fn new(command_sender: Arc<CommandSender>) -> Self {
+        let (notify_shutdown, _) = broadcast::channel(1);
+
         Context {
+            notify_shutdown,
             command_sender,
             current_req_id: None,
             current_conn_id: None,
@@ -61,9 +65,12 @@ impl Context {
         }
     }
 
-    pub(crate) async fn remove_conn_sender(&self) -> Option<Arc<ConnSender>> {
+    pub(crate) async fn remove_conn_sender(&self) {
         match &self.current_conn_id {
-            Some(conn_id) => self.conn_map.lock().await.remove(conn_id),
+            Some(conn_id) => {
+                let discard = self.conn_map.lock().await.remove(conn_id);
+                drop(discard);
+            }
             None => panic!("context current conn id is empty"),
         }
     }

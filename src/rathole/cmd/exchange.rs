@@ -47,8 +47,7 @@ impl CommandApply for Exchange {
         match op_sender {
             Some(sender) => {
                 if let Err(e) = sender.send(bytes).await {
-                    let discard = context.remove_conn_sender().await;
-                    drop(discard);
+                    context.remove_conn_sender().await;
                     error!("send bytes err : {}", e);
                 }
             }
