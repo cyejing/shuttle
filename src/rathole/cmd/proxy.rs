@@ -5,12 +5,12 @@ use bytes::Bytes;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
-use crate::rathole::{context, exchange_copy};
-use crate::rathole::cmd::{Command, CommandApply, CommandParse, CommandTo};
 use crate::rathole::cmd::dial::Dial;
 use crate::rathole::cmd::resp::Resp;
+use crate::rathole::cmd::{Command, CommandApply, CommandParse, CommandTo};
 use crate::rathole::context::{ConnSender, IdAdder};
 use crate::rathole::frame::{Frame, Parse};
+use crate::rathole::{context, exchange_copy};
 
 #[derive(Debug)]
 pub struct Proxy {

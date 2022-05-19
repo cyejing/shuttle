@@ -10,9 +10,9 @@ use tokio::io::{
 use tokio::sync::mpsc;
 
 use crate::rathole::cmd::Command;
-use crate::rathole::context::{CommandSender};
+use crate::rathole::context::CommandSender;
 use crate::rathole::frame::Frame;
-use crate::rathole::{CommandChannel, context};
+use crate::rathole::{context, CommandChannel};
 
 pub struct Dispatcher<T> {
     command_read: CommandRead<T>,
@@ -34,7 +34,7 @@ pub struct CommandWrite<T> {
 }
 
 impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
-    pub fn new(stream: T, hash: String) -> (Self,Arc<CommandSender>) {
+    pub fn new(stream: T, hash: String) -> (Self, Arc<CommandSender>) {
         let (sender, receiver) = mpsc::channel(128);
         let command_sender = Arc::new(CommandSender::new(hash, sender));
         let context = context::Context::new(command_sender.clone());
@@ -42,12 +42,15 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
         let command_read = CommandRead::new(read);
         let command_write = CommandWrite::new(write);
 
-        (Dispatcher {
-            context,
-            command_read,
-            command_write,
-            receiver,
-        },command_sender)
+        (
+            Dispatcher {
+                context,
+                command_read,
+                command_write,
+                receiver,
+            },
+            command_sender,
+        )
     }
 
     pub async fn dispatch(&mut self) -> anyhow::Result<()> {
@@ -72,14 +75,21 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
     ) -> anyhow::Result<()> {
         let mut nc = context.clone();
 
-        let (req_id, cmd) = command_read.read_command().await.context("Dispatcher can't read command by conn")?;
+        let (req_id, cmd) = command_read
+            .read_command()
+            .await
+            .context("Dispatcher can't read command by conn")?;
 
         nc.with_req_id(req_id);
         let op_resp = cmd.apply(nc).await.context("Can't apply command")?;
 
         if let Some(resp) = op_resp {
-            trace!("Send resp {:?}",resp);
-            context.command_sender.send_with_id(req_id, resp).await.context("Can't send command resp")?
+            trace!("Send resp {:?}", resp);
+            context
+                .command_sender
+                .send_with_id(req_id, resp)
+                .await
+                .context("Can't send command resp")?
         }
         Ok(())
     }
@@ -95,7 +105,10 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
             Some((req_id, cmd, rc)) => {
                 context.with_req_id(req_id);
                 context.set_req(rc).await;
-                command_write.write_command(req_id, cmd).await.context("Can't write command")
+                command_write
+                    .write_command(req_id, cmd)
+                    .await
+                    .context("Can't write command")
             }
             None => Err(anyhow!("cmd receiver close")),
         }
@@ -127,7 +140,12 @@ impl<T: AsyncRead> CommandRead<T> {
                 return Ok(frame);
             }
 
-            if 0 == self.read.read_buf(&mut self.buffer).await.context("Can't read buf for frame")? {
+            if 0 == self
+                .read
+                .read_buf(&mut self.buffer)
+                .await
+                .context("Can't read buf for frame")?
+            {
                 bail!("connection reset by peer");
             }
         }
@@ -165,17 +183,24 @@ impl<T: AsyncWrite> CommandWrite<T> {
     }
 
     pub async fn write_command(&mut self, req_id: u64, cmd: Command) -> anyhow::Result<()> {
-        let frame = cmd.to_frame(req_id).context("Can't cover command to frame")?;
+        let frame = cmd
+            .to_frame(req_id)
+            .context("Can't cover command to frame")?;
 
         trace!("write frame : {}", frame);
-        self.write_frame(&frame).await.context("Can't write frame to conn")?;
+        self.write_frame(&frame)
+            .await
+            .context("Can't write frame to conn")?;
         Ok(())
     }
 
     async fn write_frame(&mut self, frame: &Frame) -> anyhow::Result<()> {
         match frame {
             Frame::Array(val) => {
-                self.write.write_u8(b'*').await.context("Can't write byte to conn")?;
+                self.write
+                    .write_u8(b'*')
+                    .await
+                    .context("Can't write byte to conn")?;
 
                 self.write_decimal(val.len() as u64).await?;
 
