@@ -1,5 +1,9 @@
-run_type: socks
-sock_addr: 127.0.0.1:4080
+run_type: rathole
 remote_addr: 127.0.0.1:4880
 ssl_enable: false # better to set true
-password: sQtfRnfhcNoZYZh1wY9u
+password: 58JCEmvcBkRAk1XkK1iH
+
+holes:
+  - name: test
+    remote_addr: 127.0.0.1:4022
+    local_addr: 127.0.0.1:22

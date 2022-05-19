@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow, bail, Context};
 use std::io::Cursor;
 use std::sync::Arc;
 
@@ -10,15 +10,15 @@ use tokio::io::{
 use tokio::sync::mpsc;
 
 use crate::rathole::cmd::Command;
-use crate::rathole::context::{CommandSender, Context};
+use crate::rathole::context::{CommandSender};
 use crate::rathole::frame::Frame;
-use crate::rathole::CommandChannel;
+use crate::rathole::{CommandChannel, context};
 
 pub struct Dispatcher<T> {
     command_read: CommandRead<T>,
     command_write: CommandWrite<T>,
 
-    context: Context,
+    context: context::Context,
     receiver: mpsc::Receiver<CommandChannel>,
 }
 
@@ -34,20 +34,20 @@ pub struct CommandWrite<T> {
 }
 
 impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
-    pub fn new(stream: T, hash: String) -> Self {
+    pub fn new(stream: T, hash: String) -> (Self,Arc<CommandSender>) {
         let (sender, receiver) = mpsc::channel(128);
         let command_sender = Arc::new(CommandSender::new(hash, sender));
-        let context = Context::new(command_sender);
+        let context = context::Context::new(command_sender.clone());
         let (read, write) = io::split(stream);
         let command_read = CommandRead::new(read);
         let command_write = CommandWrite::new(write);
 
-        Dispatcher {
+        (Dispatcher {
             context,
             command_read,
             command_write,
             receiver,
-        }
+        },command_sender)
     }
 
     pub async fn dispatch(&mut self) -> anyhow::Result<()> {
@@ -68,14 +68,14 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
 
     async fn apply_command(
         command_read: &mut CommandRead<T>,
-        context: Context,
+        context: context::Context,
     ) -> anyhow::Result<()> {
         let mut nc = context.clone();
 
-        let (req_id, cmd) = command_read.read_command().await?;
+        let (req_id, cmd) = command_read.read_command().await.context("Dispatcher can't read command by conn")?;
 
         nc.with_req_id(req_id);
-        let op_resp = cmd.apply(nc).await?;
+        let op_resp = cmd.apply(nc).await.context("Can't apply command")?;
 
         if let Some(resp) = op_resp {
             context.command_sender.send_with_id(req_id, resp).await?
@@ -86,7 +86,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
     async fn recv_command(
         command_write: &mut CommandWrite<T>,
         receiver: &mut mpsc::Receiver<CommandChannel>,
-        mut context: Context,
+        mut context: context::Context,
     ) -> anyhow::Result<()> {
         let oc = receiver.recv().await;
         match oc {
@@ -114,7 +114,7 @@ impl<T: AsyncRead> CommandRead<T> {
 
     pub async fn read_command(&mut self) -> anyhow::Result<(u64, Command)> {
         let f = self.read_frame().await?;
-        info!("read frame : {}", f);
+        trace!("read frame : {}", f);
         let (req_id, cmd) = Command::from_frame(f)?;
         Ok((req_id, cmd))
     }
@@ -165,7 +165,7 @@ impl<T: AsyncWrite> CommandWrite<T> {
     pub async fn write_command(&mut self, req_id: u64, cmd: Command) -> anyhow::Result<()> {
         let frame = cmd.to_frame(req_id)?;
 
-        info!("write frame : {}", frame);
+        trace!("write frame : {}", frame);
         self.write_frame(&frame).await?;
         Ok(())
     }
@@ -235,6 +235,12 @@ impl<T: AsyncWrite> CommandWrite<T> {
         self.write.write_all(b"\r\n").await?;
 
         Ok(())
+    }
+}
+
+impl<T> Drop for Dispatcher<T> {
+    fn drop(&mut self) {
+        self.context.notify_shutdown.send(()).ok();
     }
 }
 
