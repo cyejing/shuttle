@@ -5,13 +5,18 @@ Shuttle让互联网更简单
 
 ## Feature
 
-- tls加密通信通道
+- tls加密上网
 - 内网穿透, 支持动态调节
+- rust轻量级程序
 
 ## Architecture
 
 ![architecture](/doc/pic/architecture.png)
 
+## Download
+下载可执行文件[Release页面](https://github.com/cyejing/shuttle/releases)
+
+## Quick Start
 
 ### 加密上网使用
 #### Start Server

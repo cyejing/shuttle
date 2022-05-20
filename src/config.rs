@@ -4,9 +4,8 @@ use std::io::BufReader;
 use std::path::PathBuf;
 
 use anyhow::Context;
-use crypto::digest::Digest;
-use crypto::sha2::Sha224;
 use serde::{Deserialize, Serialize};
+use sha2::{Sha224, Digest};
 use tokio_rustls::rustls;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -142,11 +141,11 @@ fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {
     }
 }
 
-fn sha224(password: &String) -> String {
-    let mut encoder = Sha224::new();
-    encoder.reset();
-    encoder.input(password.as_bytes());
-    let result = encoder.result_str();
+fn sha224(password: &str) -> String {
+    let mut hasher = Sha224::new();
+    hasher.update(password.as_bytes());
+    let hash = hasher.finalize();
+    let result = base16ct::lower::encode_string(&hash);
     log::debug!(
         "sha224({}) = {}, length = {}",
         password,
@@ -197,4 +196,13 @@ fn default_true() -> bool {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use crate::config::sha224;
+
+    #[test]
+    fn test_hash() {
+        let hash = sha224("sQtfRnfhcNoZYZh1wY9u");
+        assert_eq!("6b34e62f6df92b8e9db961410b4f1a6fca1e2dae73f9c1b4b94f4a33",hash);
+        println!("{}",hash)
+    }
+}

@@ -31,6 +31,8 @@ jobs:
           toolchain: stable
           components: clippy
       - uses: Swatinem/rust-cache@v1
+      - name: Fmt Check
+        run: cargo fmt --check -v
       - name: Clippy
         run: cargo clippy -- -D warnings
       - name: Setup cargo-hack
@@ -52,8 +54,8 @@ jobs:
           profile: minimal
           toolchain: stable
       - uses: Swatinem/rust-cache@v1
-      - name: Run check
-        run: cargo check --verbose
       - name: Run tests
         if: matrix.os != 'windows-latest'
         run: cargo test --verbose
+      - name: Run build
+        run: cargo build --verbose
