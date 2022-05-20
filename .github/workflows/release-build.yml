@@ -5,6 +5,9 @@ on:
   push:
     tags:
       - "v*"
+    branches: [master]
+    paths:
+      - ".github/workflows/release-build.yml"
 
 env:
   CARGO_TERM_COLOR: always
@@ -40,7 +43,9 @@ jobs:
           - os: macOS-latest
             target: x86_64-apple-darwin
             name: shuttle-x86_64-apple-darwin.tgz
-
+          - os: macOS-latest
+            target: aarch64-apple-darwin
+            name: shuttle-aarch64-apple-darwin.tgz
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
