@@ -5,9 +5,9 @@ Shuttle让互联网更简单
 
 ## Feature
 
-- tls加密通信通道
+- tls加密上网
 - 内网穿透, 支持动态调节
-- 
+- rust轻量级程序
 
 ## Architecture
 
