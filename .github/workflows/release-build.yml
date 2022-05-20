@@ -65,16 +65,22 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
+          default: true
           override: true
           profile: minimal
           target: ${{ matrix.target }}
+
+      - name: Install GNU tar
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: |
+          brew install gnu-tar
+          # echo "::add-path::/usr/local/opt/gnu-tar/libexec/gnubin"
+          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
 
       # https://github.com/actions/virtual-environments/issues/2557#issuecomment-769611326
       - name: Build | Build for aarch64 apple
         if: matrix.target == 'aarch64-apple-darwin'
         run: |
-          brew install gnu-tar
-          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
           sudo xcode-select -s /Applications/Xcode_12.4.app &&
           sudo rm -Rf /Library/Developer/CommandLineTools/SDKs/*
           cargo build --release --features "local-redir local-tun armv8 neon"  --target "${{ matrix.target }}"
