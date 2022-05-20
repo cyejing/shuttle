@@ -7,11 +7,16 @@ Shuttle让互联网更简单
 
 - tls加密通信通道
 - 内网穿透, 支持动态调节
+- 
 
 ## Architecture
 
 ![architecture](/doc/pic/architecture.png)
 
+## Download
+下载可执行文件[Release页面](https://github.com/cyejing/shuttle/releases)
+
+## Quick Start
 
 ### 加密上网使用
 #### Start Server
