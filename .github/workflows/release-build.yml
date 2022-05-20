@@ -54,6 +54,8 @@ jobs:
 
 
     runs-on: ${{ matrix.os }}
+    env:
+      RUST_BACKTRACE: full
     continue-on-error: true
     steps:
       - name: Setup | Checkout
@@ -68,13 +70,17 @@ jobs:
           target: ${{ matrix.target }}
 
       # https://github.com/actions/virtual-environments/issues/2557#issuecomment-769611326
-      - name: Setup | Setup for aarch64 apple
+      - name: Build | Build for aarch64 apple
         if: matrix.target == 'aarch64-apple-darwin'
         run: |
+          brew install gnu-tar
+          echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
           sudo xcode-select -s /Applications/Xcode_12.4.app &&
           sudo rm -Rf /Library/Developer/CommandLineTools/SDKs/*
+          cargo build --release --features "local-redir local-tun armv8 neon" --target "${{ matrix.target }}"
 
       - name: Build | Build
+        if: matrix.target != 'aarch64-apple-darwin'
         uses: actions-rs/cargo@v1
         with:
           command: build
