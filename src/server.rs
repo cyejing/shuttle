@@ -245,9 +245,7 @@ impl ServerHandler {
             .clone()
             .ok_or_else(|| anyhow!("rathole hash empty!"))?;
         let (mut dispatcher, cs) = Dispatcher::new(stream, hash_str.clone());
-        self.store
-            .set_cmd_sender(cs)
-            .await;
+        self.store.set_cmd_sender(cs).await;
         tokio::select! {
             r = dispatcher.dispatch() => debug!("dispatch end {:?}",r),
             _ = self.shutdown.recv() => debug!("recv shutdown signal"),

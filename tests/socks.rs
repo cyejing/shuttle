@@ -1,4 +1,4 @@
-use log::{info};
+use log::info;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -11,7 +11,6 @@ use shuttle::logs::init_log;
 use shuttle::socks;
 use shuttle::socks::TrojanDial;
 use shuttle::store::ServerStore;
-
 
 #[tokio::test]
 async fn test_socks() {

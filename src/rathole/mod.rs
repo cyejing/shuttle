@@ -7,9 +7,9 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::common::consts;
 use crate::config::ClientConfig;
-use crate::rathole::cmd::Command;
 use crate::rathole::cmd::exchange::Exchange;
 use crate::rathole::cmd::proxy::Proxy;
+use crate::rathole::cmd::Command;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::tls::{make_server_name, make_tls_connector};
 
@@ -36,7 +36,10 @@ pub async fn start_rathole(cc: ClientConfig) -> anyhow::Result<()> {
     }
 }
 
-async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(mut stream: T, cc: ClientConfig) -> anyhow::Result<()> {
+async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
+    mut stream: T,
+    cc: ClientConfig,
+) -> anyhow::Result<()> {
     let mut buf: Vec<u8> = vec![];
     buf.extend_from_slice(cc.hash.as_bytes());
     buf.extend_from_slice(&consts::CRLF);
@@ -47,9 +50,8 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(mut stream: 
 
     let (mut dispatcher, command_sender) = Dispatcher::new(stream, cc.hash);
 
-    let f = tokio::spawn(async move {
-        dispatcher.dispatch().await.context("Rathole dispatch end")
-    });
+    let f =
+        tokio::spawn(async move { dispatcher.dispatch().await.context("Rathole dispatch end") });
 
     // let command_sender = dispatcher.get_command_sender().clone();
     for hole in cc.holes {
@@ -120,9 +122,9 @@ mod tests {
     use std::cell::RefCell;
     use std::io::Cursor;
 
-    use crate::rathole::cmd::Command;
     use crate::rathole::cmd::ping::Ping;
     use crate::rathole::cmd::resp::Resp;
+    use crate::rathole::cmd::Command;
     use crate::rathole::dispatcher::{CommandRead, CommandWrite};
 
     pub fn new_command_read(buf: &mut Vec<u8>) -> CommandRead<Cursor<Vec<u8>>> {
