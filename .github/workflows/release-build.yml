@@ -72,19 +72,6 @@ jobs:
           profile: minimal
           target: ${{ matrix.target }}
 
-      # https://github.com/actions/virtual-environments/issues/2557#issuecomment-769611326
-      - name: Setup | Setup for aarch64-apple-darwin
-        if: matrix.target == 'aarch64-apple-darwin'
-        run: |
-          sudo xcode-select -s /Applications/Xcode_12.4.app &&
-          sudo rm -Rf /Library/Developer/CommandLineTools/SDKs/*
-
-      - name: Build | Build for aarch64-apple-darwin
-        if: matrix.target == 'aarch64-apple-darwin'
-        run: |
-          cargo build --release --target ${{ matrix.target }}
-      
-
       - name: Build | Build
         if: matrix.target != 'aarch64-apple-darwin'
         uses: actions-rs/cargo@v1
