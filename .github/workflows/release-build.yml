@@ -77,7 +77,7 @@ jobs:
           echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
           sudo xcode-select -s /Applications/Xcode_12.4.app &&
           sudo rm -Rf /Library/Developer/CommandLineTools/SDKs/*
-          cargo build --release --features "local-redir local-tun armv8 neon" --target "${{ matrix.target }}"
+          cargo build --release --target "${{ matrix.target }}"
 
       - name: Build | Build
         if: matrix.target != 'aarch64-apple-darwin'
