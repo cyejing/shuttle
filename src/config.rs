@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use sha2::{Sha224, Digest};
+use sha2::{Digest, Sha224};
 use tokio_rustls::rustls;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -202,7 +202,10 @@ mod tests {
     #[test]
     fn test_hash() {
         let hash = sha224("sQtfRnfhcNoZYZh1wY9u");
-        assert_eq!("6b34e62f6df92b8e9db961410b4f1a6fca1e2dae73f9c1b4b94f4a33",hash);
-        println!("{}",hash)
+        assert_eq!(
+            "6b34e62f6df92b8e9db961410b4f1a6fca1e2dae73f9c1b4b94f4a33",
+            hash
+        );
+        println!("{}", hash)
     }
 }
