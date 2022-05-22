@@ -14,7 +14,7 @@ use shuttle::{rathole, socks};
 #[clap(author, version, about, long_about = None)]
 struct Args {
     /// Config Path
-    #[clap(short, long)]
+    #[clap(parse(from_os_str), name = "CONFIG_PATH")]
     config_path: Option<PathBuf>,
 }
 
