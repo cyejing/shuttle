@@ -1,17 +1,21 @@
 use anyhow::{anyhow, Context};
 use bytes::{Bytes, BytesMut};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::common::consts;
 use crate::config::ClientConfig;
 use crate::rathole::cmd::exchange::Exchange;
+use crate::rathole::cmd::ping::Ping;
 use crate::rathole::cmd::proxy::Proxy;
 use crate::rathole::cmd::Command;
+use crate::rathole::context::CommandSender;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::tls::{make_server_name, make_tls_connector};
+use crate::CRLF;
 
 pub mod cmd;
 pub mod context;
@@ -42,7 +46,7 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 ) -> anyhow::Result<()> {
     let mut buf: Vec<u8> = vec![];
     buf.extend_from_slice(cc.hash.as_bytes());
-    buf.extend_from_slice(&consts::CRLF);
+    buf.extend_from_slice(&CRLF);
     stream
         .write_all(buf.as_slice())
         .await
@@ -50,10 +54,13 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 
     let (mut dispatcher, command_sender) = Dispatcher::new(stream, cc.hash);
 
-    let f =
+    let dispatch =
         tokio::spawn(async move { dispatcher.dispatch().await.context("Rathole dispatch end") });
 
-    // let command_sender = dispatcher.get_command_sender().clone();
+    let hcs = command_sender.clone();
+    let heartbeat =
+        tokio::spawn(async move { heartbeat(hcs).await.context("Break for heartbeat") });
+
     for hole in cc.holes {
         let open_proxy = Command::Proxy(Proxy::new(
             hole.remote_addr.clone(),
@@ -66,7 +73,17 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         );
     }
 
-    f.await?
+    tokio::select!(
+        r = dispatch => r?,
+        r2 = heartbeat => r2?,
+    )
+}
+
+async fn heartbeat(command_sender: Arc<CommandSender>) -> anyhow::Result<()> {
+    loop {
+        command_sender.send(Command::Ping(Ping::new(None))).await?;
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    }
 }
 
 async fn exchange_copy(

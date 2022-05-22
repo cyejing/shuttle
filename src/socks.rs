@@ -8,11 +8,10 @@ use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
 
-use crate::common::{consts, socks_consts};
 use crate::config::ClientConfig;
-use crate::read_exact;
 use crate::socks::DialStream::{TCP, TLS};
 use crate::tls::{make_server_name, make_tls_connector};
+use crate::{read_exact, CRLF};
 
 pub async fn start_socks(cc: ClientConfig, dial: Arc<dyn DialRemote>) {
     let listener = TcpListener::bind(&cc.sock_addr)
@@ -198,9 +197,9 @@ impl DialRemote for TrojanDial {
             .context(format!("Trojan can't connect remote {}", &self.remote))?;
         let mut buf: Vec<u8> = vec![];
         buf.extend_from_slice(self.hash.as_bytes());
-        buf.extend_from_slice(&consts::CRLF);
+        buf.extend_from_slice(&CRLF);
         buf.extend_from_slice(ba.as_bytes().as_slice());
-        buf.extend_from_slice(&consts::CRLF);
+        buf.extend_from_slice(&CRLF);
 
         if self.ssl_enable {
             let server_name = make_server_name(self.remote.as_str())?;
@@ -378,4 +377,32 @@ mod tests {
             ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], [0x00, 0x50])
         )
     }
+}
+
+#[rustfmt::skip]
+pub mod socks_consts {
+    pub const SOCKS5_VERSION:                          u8 = 0x05;
+
+    pub const SOCKS5_AUTH_METHOD_NONE:                 u8 = 0x00;
+    pub const SOCKS5_AUTH_METHOD_GSSAPI:               u8 = 0x01;
+    pub const SOCKS5_AUTH_METHOD_PASSWORD:             u8 = 0x02;
+    pub const SOCKS5_AUTH_METHOD_NOT_ACCEPTABLE:       u8 = 0xff;
+
+    pub const SOCKS5_CMD_TCP_CONNECT:                  u8 = 0x01;
+    pub const SOCKS5_CMD_TCP_BIND:                     u8 = 0x02;
+    pub const SOCKS5_CMD_UDP_ASSOCIATE:                u8 = 0x03;
+
+    pub const SOCKS5_ADDR_TYPE_IPV4:                   u8 = 0x01;
+    pub const SOCKS5_ADDR_TYPE_DOMAIN_NAME:            u8 = 0x03;
+    pub const SOCKS5_ADDR_TYPE_IPV6:                   u8 = 0x04;
+
+    pub const SOCKS5_REPLY_SUCCEEDED:                  u8 = 0x00;
+    pub const SOCKS5_REPLY_GENERAL_FAILURE:            u8 = 0x01;
+    pub const SOCKS5_REPLY_CONNECTION_NOT_ALLOWED:     u8 = 0x02;
+    pub const SOCKS5_REPLY_NETWORK_UNREACHABLE:        u8 = 0x03;
+    pub const SOCKS5_REPLY_HOST_UNREACHABLE:           u8 = 0x04;
+    pub const SOCKS5_REPLY_CONNECTION_REFUSED:         u8 = 0x05;
+    pub const SOCKS5_REPLY_TTL_EXPIRED:                u8 = 0x06;
+    pub const SOCKS5_REPLY_COMMAND_NOT_SUPPORTED:      u8 = 0x07;
+    pub const SOCKS5_REPLY_ADDRESS_TYPE_NOT_SUPPORTED: u8 = 0x08;
 }

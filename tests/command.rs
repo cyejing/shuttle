@@ -28,7 +28,7 @@ async fn start_command_server() {
     tokio::spawn(async move {
         loop {
             let (stream, _) = listener.accept().await.unwrap();
-            let (mut dispatcher, _) = Dispatcher::new(stream, String::from("hash"));
+            let (mut dispatcher, _cs) = Dispatcher::new(stream, String::from("hash"));
 
             tokio::spawn(async move {
                 if let Err(e) = dispatcher.dispatch().await {

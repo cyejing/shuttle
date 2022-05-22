@@ -2,12 +2,13 @@ extern crate core;
 #[macro_use]
 extern crate log;
 
-pub mod common;
 pub mod config;
 pub mod rathole;
 pub mod server;
 pub mod socks;
 pub mod store;
+
+pub const CRLF: [u8; 2] = [0x0d, 0x0a];
 
 pub mod logs {
     use log::LevelFilter;
@@ -18,6 +19,18 @@ pub mod logs {
             .parse_default_env()
             .init();
     }
+}
+
+#[macro_export]
+macro_rules! read_exact {
+    ($stream: expr, $array: expr) => {{
+        let mut x = $array;
+        //        $stream
+        //            .read_exact(&mut x)
+        //            .await
+        //            .map_err(|_| io_err("lol"))?;
+        $stream.read_exact(&mut x).await.map(|_| x)
+    }};
 }
 
 pub mod tls {

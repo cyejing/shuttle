@@ -40,7 +40,7 @@ async fn start_rathole(cc: ClientConfig) {
 
     loop {
         if let Err(e) = rathole::start_rathole(cc.clone()).await {
-            error!("Rathole occurs err :{}", e);
+            error!("Rathole occurs err :{:?}", e);
             if backoff > 6400 {
                 backoff = 1200
             }
