@@ -268,6 +268,7 @@ impl<T: AsyncWrite> CommandWrite<T> {
 impl<T> Drop for Dispatcher<T> {
     fn drop(&mut self) {
         self.context.notify_shutdown.send(()).ok();
+        info!("Drop Dispatcher")
     }
 }
 

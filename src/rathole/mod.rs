@@ -1,11 +1,12 @@
-use anyhow::{anyhow, Context};
-use bytes::{Bytes, BytesMut};
 use std::sync::Arc;
 use std::time::Duration;
+
+use anyhow::{anyhow, Context};
+use bytes::{Bytes, BytesMut};
 use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 use crate::config::ClientConfig;
 use crate::rathole::cmd::exchange::Exchange;
@@ -52,10 +53,14 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         .await
         .context("Can't write rathole hash")?;
 
-    let (mut dispatcher, command_sender) = Dispatcher::new(stream, cc.hash);
+    let (dispatcher, command_sender) = Dispatcher::new(stream, cc.hash);
 
-    let dispatch =
-        tokio::spawn(async move { dispatcher.dispatch().await.context("Rathole dispatch end") });
+    let (tx, rx) = broadcast::channel(1);
+    let dispatch = tokio::spawn(async move {
+        dispatch(dispatcher, rx)
+            .await
+            .context("Rathole dispatch end")
+    });
 
     let hcs = command_sender.clone();
     let heartbeat =
@@ -66,16 +71,30 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             hole.remote_addr.clone(),
             hole.local_addr.clone(),
         ));
-        command_sender.send_sync(open_proxy).await?;
-        info!(
-            "open proxy for [remote:{}], [local:{}]",
-            hole.remote_addr, hole.local_addr
-        );
+        if let Err(e) = command_sender.send_sync(open_proxy).await {
+            tx.send(()).ok();
+            return Err(e);
+        } else {
+            info!(
+                "open proxy for [remote:{}], [local:{}]",
+                hole.remote_addr, hole.local_addr
+            );
+        }
     }
 
     tokio::select!(
         r = dispatch => r?,
         r2 = heartbeat => r2?,
+    )
+}
+
+async fn dispatch<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
+    mut d: Dispatcher<T>,
+    mut rx: broadcast::Receiver<()>,
+) -> anyhow::Result<()> {
+    tokio::select!(
+        r = d.dispatch() => r,
+        _r2 = rx.recv() => Ok(()),
     )
 }
 
@@ -92,6 +111,7 @@ async fn exchange_copy(
     context: context::Context,
 ) -> anyhow::Result<()> {
     let (mut r, mut w) = io::split(ts);
+    let mut shutdown = context.notify_shutdown.subscribe();
     info!(
         "start stream copy by exchange conn_id: {:?}",
         context.current_conn_id
@@ -100,6 +120,7 @@ async fn exchange_copy(
         tokio::select! {
             r1 = read_bytes(&mut r, context.clone()) => r1?,
             r2 = write_bytes(&mut w, &mut rx) => r2?,
+            _ = shutdown.recv() => debug!("exchange recv shutdown signal")
         }
     }
 }

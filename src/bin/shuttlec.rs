@@ -39,16 +39,17 @@ async fn start_rathole(cc: ClientConfig) {
     let mut backoff = 100;
 
     loop {
-        if let Err(e) = rathole::start_rathole(cc.clone()).await {
-            error!("Rathole occurs err :{:?}", e);
-            if backoff > 6400 {
-                backoff = 1200
-            }
+        match rathole::start_rathole(cc.clone()).await {
+            Ok(_) => info!("rathole ok ?"),
+            Err(e) => error!("Rathole occurs err :{:?}", e),
+        }
+        if backoff > 6400 {
+            backoff = 1200
         }
         info!("Retry after {} millis", backoff);
         tokio::time::sleep(Duration::from_millis(backoff)).await;
 
-        backoff *= 2;
+        backoff *= 20;
     }
 }
 
