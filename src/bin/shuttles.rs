@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use clap::Parser;
 use shuttle::config::ServerConfig;
@@ -22,10 +21,8 @@ async fn main() {
     let args: Args = Args::parse();
 
     let config = ServerConfig::load(args.config_path);
-    let config = Rc::new(config);
-
-    let store = ServerStore::from(config.clone());
-    for addr in &config.addrs {
+    let store = ServerStore::from(&config);
+    for addr in config.addrs {
         start_server(addr.clone(), store.clone()).await;
     }
 

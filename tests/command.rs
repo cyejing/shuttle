@@ -1,10 +1,6 @@
-use std::arch::x86_64::_mm256_broadcast_ps;
-use std::time::Duration;
-
 use log::error;
 use tokio::io;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast;
 
 use shuttle::logs::init_log;
 use shuttle::rathole::cmd::ping::Ping;
@@ -41,40 +37,4 @@ async fn start_command_server() {
             });
         }
     });
-}
-
-#[tokio::test]
-async fn test_select() {
-    let (tx, mut rx) = broadcast::channel(1);
-
-    tokio::spawn(async move {
-        for _i in 0..3 {
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            tx.send(()).unwrap();
-        }
-    });
-
-    tokio::select! {
-        r1 = async{
-            loop{
-                println!("hi");
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
-        }  => r1,
-        r2 = async{
-          loop {
-              match rx.recv().await {
-                Ok(_)=>{
-                    println!("recv ok");
-                },
-                Err(_)=>{
-                    break;
-                }
-            };
-          }
-        } => r2,
-    }
-
-    println!("select ok");
-    tokio::time::sleep(Duration::from_secs(10)).await;
 }

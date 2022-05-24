@@ -1,6 +1,5 @@
 use log::info;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use tokio::io::AsyncWriteExt;
@@ -39,8 +38,7 @@ async fn test_socks() {
 async fn start_server() {
     let config = ServerConfig::load(Option::Some(PathBuf::from("tests/examples/shuttles.yaml")));
 
-    let config = Rc::new(config);
-    let store = ServerStore::from(config.clone());
+    let store = ServerStore::from(&config);
     let addr = config.addrs.get(0).unwrap();
     shuttle::server::start_server(addr.clone(), store.clone()).await;
 }

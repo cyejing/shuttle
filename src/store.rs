@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -50,8 +49,8 @@ impl Default for ServerStore {
     }
 }
 
-impl From<Rc<ServerConfig>> for ServerStore {
-    fn from(sc: Rc<ServerConfig>) -> Self {
+impl From<&ServerConfig> for ServerStore {
+    fn from(sc: &ServerConfig) -> Self {
         ServerStore {
             cmd_map: Arc::new(RwLock::new(HashMap::new())),
             trojan: Arc::new(sc.trojan.clone()),
