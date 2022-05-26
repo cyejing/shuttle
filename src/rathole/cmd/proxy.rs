@@ -58,7 +58,7 @@ impl CommandApply for Proxy {
         match proxy_server.start().await {
             Ok(_) => Ok(Some(Resp::Ok("ok".to_string()))),
             Err(e) => {
-                error!("dial conn err : {:?}", e);
+                error!("proxy start err : {:?}", e);
                 Ok(Some(Resp::Err(format!("{}", e))))
             }
         }
@@ -93,9 +93,7 @@ impl ProxyServer {
                         error!("proxy run accept conn err: {}", e);
                     }
                 },
-                _ = shutdown.recv() =>{
-                    info!("recv shutdown signal")
-                }
+                _ = shutdown.recv() => info!("recv shutdown signal"),
             }
         });
         Ok(())
