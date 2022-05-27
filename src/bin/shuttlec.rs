@@ -7,7 +7,7 @@ use log::{error, info};
 
 use shuttle::config::ClientConfig;
 use shuttle::logs::init_log;
-use shuttle::socks::TrojanDial;
+use shuttle::socks::{SocksDial, TrojanDial};
 use shuttle::{rathole, socks};
 
 #[derive(Parser, Debug)]
@@ -16,6 +16,8 @@ struct Args {
     /// Config Path
     #[clap(parse(from_os_str), name = "CONFIG_PATH")]
     config_path: Option<PathBuf>,
+    #[clap(short, long, default_value = "dial")]
+    socks_mode: String,
 }
 
 #[tokio::main]
@@ -26,7 +28,7 @@ async fn main() {
 
     let cc = ClientConfig::load(args.config_path);
     match cc.run_type.as_str() {
-        "socks" => start_socks(cc).await,
+        "socks" => start_socks(cc, args.socks_mode).await,
         "rathole" => start_rathole(cc).await,
         _ => panic!("unknown run type : {}", cc.run_type),
     }
@@ -53,12 +55,21 @@ async fn start_rathole(cc: ClientConfig) {
     }
 }
 
-async fn start_socks(cc: ClientConfig) {
+async fn start_socks(cc: ClientConfig, mode: String) {
     info!("run with socks");
-    let dial = Arc::new(TrojanDial::new(
-        cc.remote_addr.clone(),
-        cc.hash.clone(),
-        cc.ssl_enable,
-    ));
-    socks::start_socks(cc, dial).await;
+    match mode.as_str() {
+        "dial" => {
+            let dial = Arc::new(TrojanDial::new(
+                cc.remote_addr.clone(),
+                cc.hash.clone(),
+                cc.ssl_enable,
+            ));
+            socks::start_socks(&cc.sock_addr, dial).await;
+        }
+        "socks" => {
+            let dial = Arc::new(SocksDial {});
+            socks::start_socks(&cc.sock_addr, dial).await;
+        }
+        _ => panic!("unknown socks mode"),
+    }
 }

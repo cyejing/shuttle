@@ -51,7 +51,7 @@ async fn start_socks() {
         cc.hash.clone(),
         cc.ssl_enable,
     ));
-    socks::start_socks(cc, dial).await;
+    socks::start_socks(&cc.sock_addr, dial).await;
 }
 
 async fn start_web_server() {

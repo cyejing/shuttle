@@ -8,17 +8,16 @@ use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
 
-use crate::config::ClientConfig;
 use crate::socks::DialStream::{TCP, TLS};
 use crate::tls::{make_server_name, make_tls_connector};
 use crate::{read_exact, CRLF};
 
-pub async fn start_socks(cc: ClientConfig, dial: Arc<dyn DialRemote>) {
-    let listener = TcpListener::bind(&cc.sock_addr)
+pub async fn start_socks(addr: &str, dial: Arc<dyn DialRemote>) {
+    let listener = TcpListener::bind(addr)
         .await
-        .context(format!("Can't Listen socks addr {}", &cc.sock_addr))
+        .context(format!("Can't Listen socks addr {}", addr))
         .unwrap();
-    info!("Listen for socks connections @ {}", &cc.sock_addr);
+    info!("Listen for socks connections @ {}", addr);
     let socks = Socks { listener, dial };
     tokio::spawn(async move {
         if let Err(e) = socks.run().await {
