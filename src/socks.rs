@@ -39,7 +39,7 @@ impl Socks {
             let mut ss = SocksStream { ts };
             tokio::spawn(async move {
                 if let Err(e) = ss.handle(dial).await {
-                    error!("Socks stream handle err : {}", e);
+                    error!("Socks stream handle err : {:?}", e);
                 };
             });
         }
