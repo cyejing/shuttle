@@ -1,7 +1,8 @@
-use anyhow::{anyhow, bail, Context};
 use std::io::Cursor;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
+use anyhow::{anyhow, bail, Context};
 use bytes::{Buf, BytesMut};
 use tokio::io;
 use tokio::io::{
@@ -18,6 +19,8 @@ pub struct Dispatcher<T> {
     command_read: CommandRead<T>,
     command_write: CommandWrite<T>,
 
+    heartbeat: Heartbeat,
+    heartbeat_sender: mpsc::Sender<()>,
     context: context::Context,
     receiver: mpsc::Receiver<CommandChannel>,
 }
@@ -33,6 +36,11 @@ pub struct CommandWrite<T> {
     write: BufWriter<WriteHalf<T>>,
 }
 
+struct Heartbeat {
+    beat_at: Instant,
+    receiver: mpsc::Receiver<()>,
+}
+
 impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
     pub fn new(stream: T, hash: String) -> (Self, Arc<CommandSender>) {
         let (sender, receiver) = mpsc::channel(128);
@@ -42,12 +50,20 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
         let command_read = CommandRead::new(read);
         let command_write = CommandWrite::new(write);
 
+        let (heartbeat_sender, heartbeat_receiver) = mpsc::channel(1);
+        let heartbeat = Heartbeat {
+            beat_at: Instant::now(),
+            receiver: heartbeat_receiver,
+        };
+
         (
             Dispatcher {
-                context,
                 command_read,
                 command_write,
                 receiver,
+                context,
+                heartbeat,
+                heartbeat_sender,
             },
             command_sender,
         )
@@ -58,6 +74,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
             tokio::select! {
                 r1 = Self::apply_command(
                     &mut self.command_read,
+                    &mut self.heartbeat_sender,
                     self.context.clone(),
                 ) => r1?,
                 r2 = Self::recv_command(
@@ -65,12 +82,14 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
                     &mut self.receiver,
                     self.context.clone(),
                 ) => r2?,
+                r3 = self.heartbeat.watch() => r3?
             }
         }
     }
 
     async fn apply_command(
         command_read: &mut CommandRead<T>,
+        heartbead_sender: &mut mpsc::Sender<()>,
         context: context::Context,
     ) -> anyhow::Result<()> {
         let mut nc = context.clone();
@@ -79,6 +98,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
             .read_command()
             .await
             .context("Dispatcher can't read command by conn")?;
+
+        heartbead_sender.send(()).await?;
 
         nc.with_req_id(req_id);
         let op_resp = cmd.apply(nc).await.context("Can't apply command")?;
@@ -269,6 +290,25 @@ impl<T> Drop for Dispatcher<T> {
     fn drop(&mut self) {
         self.context.notify_shutdown.send(()).ok();
         info!("Drop Dispatcher")
+    }
+}
+
+impl Heartbeat {
+    pub async fn watch(&mut self) -> anyhow::Result<()> {
+        loop {
+            tokio::select! {
+                _ = self.receiver.recv() => {
+                    self.beat_at = Instant::now();
+                },
+                _ = tokio::time::sleep(Duration::from_secs(10)) =>{
+                    let elapsed = self.beat_at.elapsed().as_secs();
+                    debug!("last heartbeat at {}s ago",elapsed);
+                    if elapsed > 60{
+                        return Err(anyhow!("no have heartbeat in 30s"))
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -1,4 +1,5 @@
 /target
+.local_history
 .idea
 .DS_Store
 logs

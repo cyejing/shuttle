@@ -46,12 +46,11 @@ impl CommandApply for Resp {
     async fn apply(&self, context: Context) -> anyhow::Result<Option<Resp>> {
         let rc = context.get_req().await;
         if let Some(s) = rc.flatten() {
-            if match self {
+            let sr = match self {
                 Resp::Ok(_msg) => s.send(Ok(())),
                 Resp::Err(msg) => s.send(Err(anyhow!(msg.to_string()))),
-            }
-            .is_err()
-            {
+            };
+            if sr.is_err() {
                 error!("req channel close");
             }
         };
