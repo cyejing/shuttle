@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
+use bytes::BytesMut;
 use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
@@ -52,6 +53,28 @@ struct SocksStream {
 
 impl SocksStream {
     async fn handle(&mut self, dr: Arc<dyn DialRemote>) -> anyhow::Result<()> {
+        let mut fb = [0u8, 1];
+        self.ts.peek(&mut fb).await?;
+
+        if fb[0] == socks_consts::SOCKS5_VERSION {
+            self.handle_socks(dr).await
+        } else {
+            self.handle_http().await
+        }
+    }
+
+    async fn handle_http(&mut self) -> anyhow::Result<()> {
+        loop {
+            let mut buf = BytesMut::new();
+            let size = self.ts.read_buf(&mut buf).await?;
+            if size == 0 {
+                return Ok(());
+            }
+            info!("{}", pretty_hex::pretty_hex(&buf));
+        }
+    }
+
+    async fn handle_socks(&mut self, dr: Arc<dyn DialRemote>) -> anyhow::Result<()> {
         self.handshake().await.context("Socks Can't handshake")?;
 
         let addr = self

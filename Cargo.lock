@@ -715,6 +715,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1df8c4ec4b0627e53bdf214615ad287367e482558cf84b109250b37464dc03ae"
 
 [[package]]
+name = "pretty-hex"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6fa0831dd7cc608c38a5e323422a0077678fa5744aa2be4ad91c4ece8eec8d5"
+
+[[package]]
 name = "proc-macro-error"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1053,7 +1059,7 @@ dependencies = [
 
 [[package]]
 name = "shuttle"
-version = "0.1.0"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1063,6 +1069,7 @@ dependencies = [
  "clap",
  "env_logger",
  "log",
+ "pretty-hex",
  "reqwest",
  "rust-crypto",
  "rustls-pemfile",
