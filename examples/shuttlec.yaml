@@ -1,4 +1,4 @@
-run_type: socks
+run_type: proxy
 sock_addr: 127.0.0.1:4080
 remote_addr: 127.0.0.1:4880
 ssl_enable: false # better to set true

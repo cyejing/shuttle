@@ -7,8 +7,8 @@ use log::{error, info};
 
 use shuttle::config::ClientConfig;
 use shuttle::logs::init_log;
-use shuttle::socks::{SocksDial, TrojanDial};
-use shuttle::{rathole, socks};
+use shuttle::proxy::{SocksDial, TrojanDial};
+use shuttle::{proxy, rathole};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -28,7 +28,7 @@ async fn main() {
 
     let cc = ClientConfig::load(args.config_path);
     match cc.run_type.as_str() {
-        "socks" => start_socks(cc, args.socks_mode).await,
+        "proxy" => start_proxy(cc, args.socks_mode).await,
         "rathole" => start_rathole(cc).await,
         _ => panic!("unknown run type : {}", cc.run_type),
     }
@@ -55,7 +55,7 @@ async fn start_rathole(cc: ClientConfig) {
     }
 }
 
-async fn start_socks(cc: ClientConfig, mode: String) {
+async fn start_proxy(cc: ClientConfig, mode: String) {
     info!("run with socks");
     match mode.as_str() {
         "dial" => {
@@ -64,11 +64,11 @@ async fn start_socks(cc: ClientConfig, mode: String) {
                 cc.hash.clone(),
                 cc.ssl_enable,
             ));
-            socks::start_socks(&cc.sock_addr, dial).await;
+            proxy::start_proxy(&cc.proxy_addr, dial).await;
         }
         "socks" => {
             let dial = Arc::new(SocksDial {});
-            socks::start_socks(&cc.sock_addr, dial).await;
+            proxy::start_proxy(&cc.proxy_addr, dial).await;
         }
         _ => panic!("unknown socks mode"),
     }

@@ -1,11 +1,13 @@
+use tokio::io::{AsyncRead, AsyncReadExt};
+
 extern crate core;
 #[macro_use]
 extern crate log;
 
 pub mod config;
+pub mod proxy;
 pub mod rathole;
 pub mod server;
-pub mod socks;
 pub mod store;
 
 pub const CRLF: [u8; 2] = [0x0d, 0x0a];
@@ -31,6 +33,21 @@ macro_rules! read_exact {
         //            .map_err(|_| io_err("lol"))?;
         $stream.read_exact(&mut x).await.map(|_| x)
     }};
+}
+
+pub async fn read_line<T: AsyncRead + Unpin>(ts: &mut T) -> anyhow::Result<Vec<u8>> {
+    let mut line = Vec::new();
+    loop {
+        let u81 = ts.read_u8().await?;
+        if u81 == b'\r' {
+            let u82 = ts.read_u8().await?;
+            if u82 == b'\n' {
+                return Ok(line);
+            }
+        } else {
+            line.push(u81);
+        }
+    }
 }
 
 pub mod tls {

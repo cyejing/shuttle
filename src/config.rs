@@ -23,7 +23,7 @@ pub struct ClientConfig {
     #[serde(skip)]
     pub hash: String,
     #[serde(default)]
-    pub sock_addr: String,
+    pub proxy_addr: String,
     #[serde(default = "default_true")]
     pub ssl_enable: bool,
     #[serde(default)]

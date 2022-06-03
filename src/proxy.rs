@@ -4,16 +4,15 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
-use bytes::BytesMut;
 use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
 
-use crate::socks::DialStream::{TCP, TLS};
+use crate::proxy::DialStream::{TCP, TLS};
 use crate::tls::{make_server_name, make_tls_connector};
-use crate::{read_exact, CRLF};
+use crate::{read_exact, read_line, CRLF};
 
-pub async fn start_socks(addr: &str, dial: Arc<dyn DialRemote>) {
+pub async fn start_proxy(addr: &str, dial: Arc<dyn DialRemote>) {
     let listener = TcpListener::bind(addr)
         .await
         .context(format!("Can't Listen socks addr {}", addr))
@@ -53,7 +52,7 @@ struct SocksStream {
 
 impl SocksStream {
     async fn handle(&mut self, dr: Arc<dyn DialRemote>) -> anyhow::Result<()> {
-        let mut fb = [0u8, 1];
+        let mut fb = [0u8];
         self.ts.peek(&mut fb).await?;
 
         if fb[0] == socks_consts::SOCKS5_VERSION {
@@ -65,13 +64,45 @@ impl SocksStream {
 
     async fn handle_http(&mut self) -> anyhow::Result<()> {
         loop {
-            let mut buf = BytesMut::new();
-            let size = self.ts.read_buf(&mut buf).await?;
-            if size == 0 {
-                return Ok(());
+            let line = read_line(&mut self.ts).await?;
+            if line.is_empty() {
+                break;
+            } else {
+                info!("{} : {}", line.len(), String::from_utf8(line)?);
             }
-            info!("{}", pretty_hex::pretty_hex(&buf));
         }
+        info!("read http header end");
+        let mut ds = TcpStream::connect("baidu.com:80").await?;
+        self.ts
+            .write_all("HTTP/1.1 200 Connection Established\r\n\r\n".as_bytes())
+            .await?;
+        info!("write resp");
+
+        copy_bidirectional(&mut self.ts, &mut ds)
+            .await
+            .context("Proxy io copy err")?;
+
+        // let dr = SocksDial {};
+        // let domain = "baidu.com".as_bytes().to_vec();
+        // let addr = ByteAddr::Domain(0x01, 0x01, domain, [0x00, 0x50]);
+        // match dr
+        // .dial(addr)
+        // .await
+        // .context("Proxy can't dial remote addr")?
+        // {
+        // TCP(mut rts) => {
+        // copy_bidirectional(&mut rts, &mut self.ts)
+        // .await
+        // .context("Proxy io copy err")?;
+        // }
+        // TLS(mut rts) => {
+        // copy_bidirectional(&mut rts, &mut self.ts)
+        // .await
+        // .context("Proxy io copy err")?;
+        // }
+        // };
+
+        Ok(())
     }
 
     async fn handle_socks(&mut self, dr: Arc<dyn DialRemote>) -> anyhow::Result<()> {
@@ -371,7 +402,7 @@ impl ByteAddr {
 mod tests {
     use std::io::Cursor;
 
-    use crate::socks::ByteAddr;
+    use crate::proxy::ByteAddr;
 
     #[test]
     fn test_as_byte_addr() {

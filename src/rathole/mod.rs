@@ -9,8 +9,8 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 
 use crate::config::ClientConfig;
 use crate::rathole::cmd::exchange::Exchange;
+use crate::rathole::cmd::hole::Hole;
 use crate::rathole::cmd::ping::Ping;
-use crate::rathole::cmd::proxy::Proxy;
 use crate::rathole::cmd::Command;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::tls::{make_server_name, make_tls_connector};
@@ -70,10 +70,8 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     });
 
     for hole in cc.holes {
-        let open_proxy = Command::Proxy(Proxy::new(
-            hole.remote_addr.clone(),
-            hole.local_addr.clone(),
-        ));
+        let open_proxy =
+            Command::Hole(Hole::new(hole.remote_addr.clone(), hole.local_addr.clone()));
         if let Err(e) = command_sender.send_sync(open_proxy).await {
             tx.send(()).ok();
             return Err(e);

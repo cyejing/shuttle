@@ -3,9 +3,9 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use crate::config::Addr;
+use crate::proxy::ByteAddr;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::read_exact;
-use crate::socks::ByteAddr;
 use crate::store::ServerStore;
 use crate::tls::make_tls_acceptor;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};

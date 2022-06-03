@@ -13,31 +13,31 @@ use crate::rathole::frame::{Frame, Parse};
 use crate::rathole::{context, exchange_copy};
 
 #[derive(Debug)]
-pub struct Proxy {
+pub struct Hole {
     remote_addr: String,
     local_addr: String,
 }
 
-impl Proxy {
-    pub const COMMAND_NAME: &'static str = "proxy";
+impl Hole {
+    pub const COMMAND_NAME: &'static str = "hole";
 
     pub fn new(remote_addr: String, local_addr: String) -> Self {
-        Proxy {
+        Hole {
             remote_addr,
             local_addr,
         }
     }
 }
 
-impl CommandParse<Proxy> for Proxy {
+impl CommandParse<Hole> for Hole {
     fn parse_frame(parse: &mut Parse) -> anyhow::Result<Self> {
         let remote_addr = parse.next_string()?;
         let local_addr = parse.next_string()?;
-        Ok(Proxy::new(remote_addr, local_addr))
+        Ok(Hole::new(remote_addr, local_addr))
     }
 }
 
-impl CommandTo for Proxy {
+impl CommandTo for Hole {
     fn to_frame(&self) -> anyhow::Result<Frame> {
         let mut f = Frame::array();
         f.push_bulk(Bytes::from(Self::COMMAND_NAME));
@@ -48,7 +48,7 @@ impl CommandTo for Proxy {
 }
 
 #[async_trait]
-impl CommandApply for Proxy {
+impl CommandApply for Hole {
     async fn apply(&self, context: context::Context) -> anyhow::Result<Option<Resp>> {
         let proxy_server = ProxyServer::new(
             self.remote_addr.clone(),

@@ -36,14 +36,14 @@ trojan:
     - sQtfRnfhcNoZYZh1wY9u
 ```
 #### Start Client
-``./shuttlec -c example/shuttlec-socks.yaml``
+``./shuttlec -c example/shuttlec-proxy.yaml``
 
 配置参数
 ```yaml
-run_type: socks #运行类型socks 代理
-name: socks
+run_type: proxy #运行类型 代理模式
+name: proxy
 ssl_enable: true
-sock_addr: 127.0.0.1:4080 #本地socks5代理
+proxy_addr: 127.0.0.1:4080 #本地代理地址
 remote_addr: cyejing.cn:4843 #服务器地址
 password: sQtfRnfhcNoZYZh1wY9u #对应服务器密码
 

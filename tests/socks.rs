@@ -7,8 +7,7 @@ use tokio::net::TcpListener;
 
 use shuttle::config::{ClientConfig, ServerConfig};
 use shuttle::logs::init_log;
-use shuttle::socks;
-use shuttle::socks::TrojanDial;
+use shuttle::proxy::{self, TrojanDial};
 use shuttle::store::ServerStore;
 
 #[tokio::test]
@@ -51,7 +50,7 @@ async fn start_socks() {
         cc.hash.clone(),
         cc.ssl_enable,
     ));
-    socks::start_socks(&cc.sock_addr, dial).await;
+    proxy::start_proxy(&cc.proxy_addr, dial).await;
 }
 
 async fn start_web_server() {
