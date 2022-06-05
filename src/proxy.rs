@@ -1,14 +1,11 @@
-use std::fmt::{Display, Formatter, Write};
+use std::fmt::{Display, Formatter};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
 
 use anyhow::{anyhow, Context};
-use hyper::server::conn::Http;
-use hyper::service::service_fn;
-use hyper::{header, Body, Client, Method, Request, Response, StatusCode};
-use hyper_tls::HttpsConnector;
+use itertools::Itertools;
 use tokio::io::{
     self, copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf,
 };
@@ -59,7 +56,6 @@ async fn handle(ts: TcpStream, dial: Dial) -> anyhow::Result<()> {
 }
 
 struct HttpStream {
-    #[allow(dead_code)]
     dial: Dial,
 }
 
@@ -69,95 +65,42 @@ struct SocksStream {
 }
 
 impl HttpStream {
-    async fn handle(&mut self, ts: TcpStream) -> anyhow::Result<()> {
-        let host_mux = Arc::new(Mutex::new(String::new()));
-        let mut ts_mux = SyncSocket::new(ts);
+    async fn handle(&mut self, mut ts: TcpStream) -> anyhow::Result<()> {
+        // let host_mux = Arc::new(Mutex::new(String::new()));
+        // let mut ts_mux = SyncSocket::new(ts);
+        let mut http = Http::new();
+        http.read(&mut ts).await?;
 
-        Http::new()
-            .serve_connection(
-                ts_mux.clone(),
-                service_fn(|req| Self::proxy_service(req, host_mux.clone())),
-            )
-            .await?;
-
-        let host = host_mux.lock().unwrap().clone();
-        if !host.is_empty() {
-            let addr = ByteAddr::from(host.as_str())?;
-            info!("host: {}, ByteAddr: {}", host, addr);
-            match self
-                .dial
-                .dial(addr)
-                .await
-                .context("Http can't dial remote addr")?
-            {
-                TCP(mut rts) => {
-                    copy_bidirectional(&mut rts, &mut ts_mux)
-                        .await
-                        .context("Http io copy err")?;
+        let addr = ByteAddr::from(&http.host.ok_or_else(|| anyhow!("Http Host empty"))?)?;
+        debug!("Http proxy addr: {}", addr);
+        match self
+            .dial
+            .dial(addr)
+            .await
+            .context("Http can't dial remote addr")?
+        {
+            TCP(mut rts) => {
+                if http.connect {
+                    ts.write_all("HTTP/1.1 200 OK\r\n\r\n".as_bytes()).await?;
+                } else {
+                    rts.write_all(http.buf.as_slice()).await?;
                 }
-                TLS(mut rts) => {
-                    copy_bidirectional(&mut rts, &mut ts_mux)
-                        .await
-                        .context("Http io copy err")?;
+                copy_bidirectional(&mut rts, &mut ts)
+                    .await
+                    .context("Http io copy err")?;
+            }
+            TLS(mut rts) => {
+                if http.connect {
+                    ts.write_all("HTTP/1.1 200 OK\r\n\r\n".as_bytes()).await?;
+                } else {
+                    rts.write_all(http.buf.as_slice()).await?;
                 }
-            };
-        }
+                copy_bidirectional(&mut rts, &mut ts)
+                    .await
+                    .context("Http io copy err")?;
+            }
+        };
         Ok(())
-    }
-
-    async fn proxy_service(
-        mut req: Request<Body>,
-        shost: Arc<Mutex<String>>,
-    ) -> anyhow::Result<Response<Body>> {
-        let host = Self::get_host(&req)?;
-        info!("Received host: {}, request:\n{:#?}", host, req);
-
-        if req.method() == Method::CONNECT {
-            info!("method connect");
-
-            shost.lock().unwrap().write_str(host.as_str())?;
-            Ok(Response::builder()
-                .status(StatusCode::OK)
-                .body(Body::empty())
-                .unwrap())
-        } else {
-            Self::reset_headers(&mut req);
-
-            let https = HttpsConnector::new();
-            let client = Client::builder().build::<_, hyper::Body>(https);
-
-            let response = client.request(req).await;
-            response.or_else(|_| {
-                Ok(Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Body::empty())
-                    .unwrap())
-            })
-        }
-    }
-
-    fn reset_headers(req: &mut Request<Body>) {
-        req.headers_mut().remove(header::ACCEPT_ENCODING);
-        req.headers_mut().remove(header::CONNECTION);
-        req.headers_mut().remove("proxy-connection");
-        req.headers_mut().remove(header::PROXY_AUTHENTICATE);
-        req.headers_mut().remove(header::PROXY_AUTHORIZATION);
-    }
-
-    fn get_host(req: &Request<Body>) -> anyhow::Result<String> {
-        // Attempt to get Host header
-        let host = req.headers().get(header::HOST);
-
-        // Get the Authority in the request start line
-        let uri = req.uri().authority();
-
-        // TODO: Appropriate logic based on https://tools.ietf.org/html/rfc7230#section-5.4
-        match (host, uri) {
-            (Some(host), None) => Ok(host.to_str()?.to_string()),
-            (None, Some(authority)) => Ok(authority.as_str().to_string()),
-            (Some(_), Some(authority)) => Ok(authority.as_str().to_string()),
-            (None, None) => Err(anyhow!("not found host")),
-        }
     }
 }
 
@@ -436,15 +379,102 @@ impl ByteAddr {
 
     pub fn from(host: &str) -> anyhow::Result<Self> {
         debug!("ByteAddr from host :{}", host);
-        let host_port: Vec<&str> = host.split(':').collect();
-        if host_port.len() != 2 {
-            return Err(anyhow!("parse host err"));
-        }
-        let domain = host_port.get(0).unwrap().as_bytes().to_vec();
-        let port = atoi::atoi::<u16>(host_port.get(1).unwrap().as_bytes())
-            .ok_or_else(|| anyhow!("port parse err"))?;
+        let (domain, port) = host
+            .split(':')
+            .collect_tuple()
+            .context("ByteAddr parse host err")
+            .unwrap();
+        let port =
+            atoi::atoi::<u16>(port.as_bytes()).ok_or_else(|| anyhow!("ByteAddr parse port err"))?;
 
-        Ok(ByteAddr::Domain(0x01, 0x03, domain, port))
+        Ok(ByteAddr::Domain(
+            0x01,
+            0x03,
+            domain.as_bytes().to_vec(),
+            port,
+        ))
+    }
+}
+
+struct Http {
+    buf: Vec<u8>,
+    host: Option<String>,
+    connect: bool,
+}
+
+impl Http {
+    fn new() -> Self {
+        Http {
+            buf: Vec::new(),
+            host: None,
+            connect: false,
+        }
+    }
+
+    async fn read<T: AsyncRead + Unpin>(&mut self, ts: &mut T) -> anyhow::Result<()> {
+        let fline = Self::read_line(ts).await?;
+        self.buf.append(&mut fline.clone());
+        let (m, h, v) = String::from_utf8(fline)?
+            .split(' ')
+            .map(|s| s.to_lowercase().trim().to_string())
+            .collect_tuple()
+            .context("Http split method")
+            .unwrap();
+        debug!("http: {} {} {}", m, h, v);
+
+        if m == "connect" {
+            self.connect = true;
+        }
+
+        loop {
+            let mut line = Self::read_line(ts).await?;
+            if line.len() == 2 {
+                self.buf.append(&mut line);
+                break;
+            }
+            let (k, mut v) = String::from_utf8(line.clone())?
+                .split(": ")
+                .map(|s| s.to_lowercase().trim().to_string())
+                .collect_tuple()
+                .context("Http split header")
+                .unwrap();
+
+            debug!("heaeder: {} : {}", k, v);
+            if k == "host" {
+                if !v.contains(':') {
+                    v.push_str(":80");
+                    self.host = Some(v);
+                } else {
+                    self.host = Some(v);
+                }
+            }
+
+            if k != "accept-encoding"
+                && k != "connection"
+                && k != "proxy-connection"
+                && k != "proxy-authenticate"
+                && k != "proxy-authorization"
+            {
+                self.buf.append(&mut line.clone());
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn read_line<T: AsyncRead + Unpin>(ts: &mut T) -> anyhow::Result<Vec<u8>> {
+        let mut line = Vec::new();
+        loop {
+            let u81 = ts.read_u8().await?;
+            line.push(u81);
+            if u81 == b'\r' {
+                let u82 = ts.read_u8().await?;
+                if u82 == b'\n' {
+                    line.push(u82);
+                    return Ok(line);
+                }
+            }
+        }
     }
 }
 
