@@ -1,111 +1,168 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::sync::Arc;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::Poll;
 
 use anyhow::{anyhow, Context};
-use async_trait::async_trait;
-use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt};
+use hyper::server::conn::Http;
+use hyper::service::service_fn;
+use hyper::{header, Body, Client, Method, Request, Response, StatusCode};
+use hyper_tls::HttpsConnector;
+use tokio::io::{
+    self, copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf,
+};
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
 
 use crate::proxy::DialStream::{TCP, TLS};
 use crate::tls::{make_server_name, make_tls_connector};
-use crate::{read_exact, read_line, CRLF};
+use crate::{read_exact, CRLF};
 
-pub async fn start_proxy(addr: &str, dial: Arc<dyn DialRemote>) {
+pub async fn start_proxy(addr: &str, dial: Dial) {
     let listener = TcpListener::bind(addr)
         .await
         .context(format!("Can't Listen socks addr {}", addr))
         .unwrap();
+
     info!("Listen for socks connections @ {}", addr);
-    let socks = Socks { listener, dial };
     tokio::spawn(async move {
-        if let Err(e) = socks.run().await {
+        if let Err(e) = serve(listener, dial).await {
             error!("Socks run err : {}", e);
         }
     });
 }
 
-struct Socks {
-    listener: TcpListener,
-    dial: Arc<dyn DialRemote>,
+async fn serve(listener: TcpListener, dial: Dial) -> anyhow::Result<()> {
+    loop {
+        let (ts, _) = listener.accept().await?;
+        let d = dial.clone();
+        tokio::spawn(async move {
+            if let Err(e) = handle(ts, d).await {
+                error!("Socks stream handle err : {:?}", e);
+            };
+        });
+    }
 }
 
-impl Socks {
-    pub async fn run(&self) -> anyhow::Result<()> {
-        loop {
-            let (ts, _) = self.listener.accept().await?;
-            let dial = self.dial.clone();
-            let mut ss = SocksStream { ts };
-            tokio::spawn(async move {
-                if let Err(e) = ss.handle(dial).await {
-                    error!("Socks stream handle err : {:?}", e);
-                };
-            });
-        }
+async fn handle(ts: TcpStream, dial: Dial) -> anyhow::Result<()> {
+    let mut fb = [0u8];
+    ts.peek(&mut fb).await?;
+
+    if fb[0] == socks_consts::SOCKS5_VERSION {
+        let mut ss = SocksStream { ts, dial };
+        ss.handle().await
+    } else {
+        let mut hs = HttpStream { dial };
+        hs.handle(ts).await
     }
+}
+
+struct HttpStream {
+    #[allow(dead_code)]
+    dial: Dial,
 }
 
 struct SocksStream {
     ts: TcpStream,
+    dial: Dial,
 }
 
-impl SocksStream {
-    async fn handle(&mut self, dr: Arc<dyn DialRemote>) -> anyhow::Result<()> {
-        let mut fb = [0u8];
-        self.ts.peek(&mut fb).await?;
+impl HttpStream {
+    async fn handle(&mut self, ts: TcpStream) -> anyhow::Result<()> {
+        let host_mux = Arc::new(Mutex::new(String::new()));
+        let mut ts_mux = SyncSocket::new(ts);
 
-        if fb[0] == socks_consts::SOCKS5_VERSION {
-            self.handle_socks(dr).await
-        } else {
-            self.handle_http().await
-        }
-    }
-
-    async fn handle_http(&mut self) -> anyhow::Result<()> {
-        loop {
-            let line = read_line(&mut self.ts).await?;
-            if line.is_empty() {
-                break;
-            } else {
-                info!("{} : {}", line.len(), String::from_utf8(line)?);
-            }
-        }
-        info!("read http header end");
-        let mut ds = TcpStream::connect("baidu.com:80").await?;
-        self.ts
-            .write_all("HTTP/1.1 200 Connection Established\r\n\r\n".as_bytes())
+        Http::new()
+            .serve_connection(
+                ts_mux.clone(),
+                service_fn(|req| Self::proxy_service(req, host_mux.clone())),
+            )
             .await?;
-        info!("write resp");
 
-        copy_bidirectional(&mut self.ts, &mut ds)
-            .await
-            .context("Proxy io copy err")?;
-
-        // let dr = SocksDial {};
-        // let domain = "baidu.com".as_bytes().to_vec();
-        // let addr = ByteAddr::Domain(0x01, 0x01, domain, [0x00, 0x50]);
-        // match dr
-        // .dial(addr)
-        // .await
-        // .context("Proxy can't dial remote addr")?
-        // {
-        // TCP(mut rts) => {
-        // copy_bidirectional(&mut rts, &mut self.ts)
-        // .await
-        // .context("Proxy io copy err")?;
-        // }
-        // TLS(mut rts) => {
-        // copy_bidirectional(&mut rts, &mut self.ts)
-        // .await
-        // .context("Proxy io copy err")?;
-        // }
-        // };
-
+        let host = host_mux.lock().unwrap().clone();
+        if !host.is_empty() {
+            let addr = ByteAddr::from(host.as_str())?;
+            info!("host: {}, ByteAddr: {}", host, addr);
+            match self
+                .dial
+                .dial(addr)
+                .await
+                .context("Http can't dial remote addr")?
+            {
+                TCP(mut rts) => {
+                    copy_bidirectional(&mut rts, &mut ts_mux)
+                        .await
+                        .context("Http io copy err")?;
+                }
+                TLS(mut rts) => {
+                    copy_bidirectional(&mut rts, &mut ts_mux)
+                        .await
+                        .context("Http io copy err")?;
+                }
+            };
+        }
         Ok(())
     }
 
-    async fn handle_socks(&mut self, dr: Arc<dyn DialRemote>) -> anyhow::Result<()> {
+    async fn proxy_service(
+        mut req: Request<Body>,
+        shost: Arc<Mutex<String>>,
+    ) -> anyhow::Result<Response<Body>> {
+        let host = Self::get_host(&req)?;
+        info!("Received host: {}, request:\n{:#?}", host, req);
+
+        if req.method() == Method::CONNECT {
+            info!("method connect");
+
+            shost.lock().unwrap().write_str(host.as_str())?;
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .body(Body::empty())
+                .unwrap())
+        } else {
+            Self::reset_headers(&mut req);
+
+            let https = HttpsConnector::new();
+            let client = Client::builder().build::<_, hyper::Body>(https);
+
+            let response = client.request(req).await;
+            response.or_else(|_| {
+                Ok(Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::empty())
+                    .unwrap())
+            })
+        }
+    }
+
+    fn reset_headers(req: &mut Request<Body>) {
+        req.headers_mut().remove(header::ACCEPT_ENCODING);
+        req.headers_mut().remove(header::CONNECTION);
+        req.headers_mut().remove("proxy-connection");
+        req.headers_mut().remove(header::PROXY_AUTHENTICATE);
+        req.headers_mut().remove(header::PROXY_AUTHORIZATION);
+    }
+
+    fn get_host(req: &Request<Body>) -> anyhow::Result<String> {
+        // Attempt to get Host header
+        let host = req.headers().get(header::HOST);
+
+        // Get the Authority in the request start line
+        let uri = req.uri().authority();
+
+        // TODO: Appropriate logic based on https://tools.ietf.org/html/rfc7230#section-5.4
+        match (host, uri) {
+            (Some(host), None) => Ok(host.to_str()?.to_string()),
+            (None, Some(authority)) => Ok(authority.as_str().to_string()),
+            (Some(_), Some(authority)) => Ok(authority.as_str().to_string()),
+            (None, None) => Err(anyhow!("not found host")),
+        }
+    }
+}
+
+impl SocksStream {
+    async fn handle(&mut self) -> anyhow::Result<()> {
         self.handshake().await.context("Socks Can't handshake")?;
 
         let addr = self
@@ -113,7 +170,8 @@ impl SocksStream {
             .await
             .context("Socks Can't read request")?;
 
-        match dr
+        match self
+            .dial
             .dial(addr)
             .await
             .context("Socks can't dial remote addr")?
@@ -205,102 +263,82 @@ pub enum DialStream {
     TLS(Box<TlsStream<TcpStream>>),
 }
 
-#[async_trait]
-pub trait DialRemote: Send + Sync {
-    async fn dial(&self, ba: ByteAddr) -> anyhow::Result<DialStream>;
+#[derive(Clone, Debug)]
+pub enum Dial {
+    Direct,
+    Trojan(String, String, bool),
 }
 
-pub struct SocksDial {}
+impl Dial {
+    pub async fn dial(&self, ba: ByteAddr) -> anyhow::Result<DialStream> {
+        match self {
+            Dial::Direct => {
+                let addr_str = ba
+                    .to_socket_addr()
+                    .await
+                    .context("ByteAddr can't cover to socket addr")?;
+                let tts = TcpStream::connect(addr_str)
+                    .await
+                    .context(format!("Socks can't connect addr {}", addr_str))?;
+                Ok(DialStream::TCP(Box::new(tts)))
+            }
+            Dial::Trojan(remote_addr, hash, ssl_enable) => {
+                let mut tts = TcpStream::connect(remote_addr)
+                    .await
+                    .context(format!("Trojan can't connect remote {}", remote_addr))?;
+                let mut buf: Vec<u8> = vec![];
+                buf.extend_from_slice(hash.as_bytes());
+                buf.extend_from_slice(&CRLF);
+                buf.extend_from_slice(ba.as_bytes().as_slice());
+                buf.extend_from_slice(&CRLF);
 
-#[async_trait]
-impl DialRemote for SocksDial {
-    async fn dial(&self, ba: ByteAddr) -> anyhow::Result<DialStream> {
-        let addr_str = ba
-            .to_socket_addr()
-            .await
-            .context("ByteAddr can't cover to socket addr")?;
-        let tts = TcpStream::connect(addr_str)
-            .await
-            .context(format!("Socks can't connect addr {}", addr_str))?;
-        Ok(DialStream::TCP(Box::new(tts)))
-    }
-}
-
-pub struct TrojanDial {
-    remote: String,
-    hash: String,
-    ssl_enable: bool,
-}
-
-impl TrojanDial {
-    pub fn new(remote: String, hash: String, ssl_enable: bool) -> TrojanDial {
-        TrojanDial {
-            remote,
-            hash,
-            ssl_enable,
+                if *ssl_enable {
+                    let server_name = make_server_name(remote_addr.as_str())?;
+                    let mut ssl_tts = make_tls_connector()
+                        .connect(server_name, tts)
+                        .await
+                        .context("Trojan can't connect tls")?;
+                    ssl_tts
+                        .write_all(buf.as_slice())
+                        .await
+                        .context("Can't write trojan")?;
+                    Ok(TLS(Box::new(ssl_tts)))
+                } else {
+                    tts.write_all(buf.as_slice())
+                        .await
+                        .context("Can't write trojan")?;
+                    Ok(TCP(Box::new(tts)))
+                }
+            }
         }
     }
 }
 
-#[async_trait]
-impl DialRemote for TrojanDial {
-    async fn dial(&self, ba: ByteAddr) -> anyhow::Result<DialStream> {
-        let mut tts = TcpStream::connect(&self.remote)
-            .await
-            .context(format!("Trojan can't connect remote {}", &self.remote))?;
-        let mut buf: Vec<u8> = vec![];
-        buf.extend_from_slice(self.hash.as_bytes());
-        buf.extend_from_slice(&CRLF);
-        buf.extend_from_slice(ba.as_bytes().as_slice());
-        buf.extend_from_slice(&CRLF);
-
-        if self.ssl_enable {
-            let server_name = make_server_name(self.remote.as_str())?;
-            let mut ssl_tts = make_tls_connector()
-                .connect(server_name, tts)
-                .await
-                .context("Trojan can't connect tls")?;
-            ssl_tts
-                .write_all(buf.as_slice())
-                .await
-                .context("Can't write trojan")?;
-            Ok(TLS(Box::new(ssl_tts)))
-        } else {
-            tts.write_all(buf.as_slice())
-                .await
-                .context("Can't write trojan")?;
-            Ok(TCP(Box::new(tts)))
-        }
-    }
-}
-
+// ByteAddr Definition
 #[derive(Debug, PartialEq)]
 pub enum ByteAddr {
-    V4(u8, u8, [u8; 4], [u8; 2]),
-    V6(u8, u8, [u8; 16], [u8; 2]),
-    Domain(u8, u8, Vec<u8>, [u8; 2]), // Vec<[u8]> or Box<[u8]> or String ?
+    V4(u8, u8, [u8; 4], u16),
+    V6(u8, u8, [u8; 16], u16),
+    Domain(u8, u8, Vec<u8>, u16), // Vec<[u8]> or Box<[u8]> or String ?
 }
 
 impl Display for ByteAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ByteAddr::V4(cmd, atyp, ip, port) => {
-                let cov_port = (port[0] as u16) << 8 | port[1] as u16;
-                write!(f, "[{},{}]:{:?}:{}", cmd, atyp, ip, cov_port)
+                write!(f, "[{},{}]:{:?}:{}", cmd, atyp, ip, port)
             }
             ByteAddr::V6(cmd, atyp, ip, port) => {
-                let cov_port = (port[0] as u16) << 8 | port[1] as u16;
-                write!(f, "[{},{}]:{:?}:{}", cmd, atyp, ip, cov_port)
+                write!(f, "[{},{}]:{:?}:{}", cmd, atyp, ip, port)
             }
             ByteAddr::Domain(cmd, atyp, domain, port) => {
-                let cov_port = (port[0] as u16) << 8 | port[1] as u16;
                 write!(
                     f,
                     "[{},{}]:{}:{}",
                     cmd,
                     atyp,
                     String::from_utf8_lossy(domain),
-                    cov_port
+                    port
                 )
             }
         }
@@ -311,22 +349,19 @@ impl ByteAddr {
     pub(crate) async fn to_socket_addr(&self) -> anyhow::Result<SocketAddr> {
         match self {
             ByteAddr::V4(_, _, ip, port) => {
-                let cov_port = (port[0] as u16) << 8 | port[1] as u16;
                 let sa = SocketAddr::V4(SocketAddrV4::new(
                     Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]),
-                    cov_port,
+                    *port,
                 ));
                 Ok(sa)
             }
             ByteAddr::V6(_, _, ip, port) => {
-                let cov_port = (port[0] as u16) << 8 | port[1] as u16;
-                let sa = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::from(*ip), cov_port, 0, 0));
+                let sa = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::from(*ip), *port, 0, 0));
                 Ok(sa)
             }
             ByteAddr::Domain(_, _, domain, port) => {
-                let cov_port = (port[0] as u16) << 8 | port[1] as u16;
                 let domain_str = String::from_utf8_lossy(domain);
-                let sa = lookup_host((&domain_str[..], cov_port))
+                let sa = lookup_host((&domain_str[..], *port))
                     .await
                     .context("Can't lookup host")?
                     .next()
@@ -342,14 +377,14 @@ impl ByteAddr {
             ByteAddr::V4(cmd, atyp, ip, port) => {
                 let mut buf = vec![*cmd, *atyp];
                 buf.extend_from_slice(ip);
-                buf.extend_from_slice(port);
+                buf.extend_from_slice(&port.to_be_bytes());
                 debug!("byte addr as bytes:{:?}", buf);
                 buf
             }
             ByteAddr::V6(cmd, atyp, ip, port) => {
                 let mut buf = vec![*cmd, *atyp];
                 buf.extend_from_slice(ip);
-                buf.extend_from_slice(port);
+                buf.extend_from_slice(&port.to_be_bytes());
                 debug!("byte addr as bytes:{:?}", buf);
                 buf
             }
@@ -357,7 +392,7 @@ impl ByteAddr {
                 let mut buf = vec![*cmd, *atyp];
                 buf.push(domain.len() as u8);
                 buf.extend_from_slice(domain.as_slice());
-                buf.extend_from_slice(port);
+                buf.extend_from_slice(&port.to_be_bytes());
                 debug!(
                     "byte addr as bytes:{:?} , domain:{}",
                     buf,
@@ -373,28 +408,90 @@ impl ByteAddr {
         T: AsyncRead + Unpin,
     {
         let addr = match atyp {
-            socks_consts::SOCKS5_ADDR_TYPE_IPV4 => ByteAddr::V4(
-                cmd,
-                atyp,
-                read_exact!(stream, [0u8; 4])?,
-                read_exact!(stream, [0u8; 2])?,
-            ),
-            socks_consts::SOCKS5_ADDR_TYPE_IPV6 => ByteAddr::V6(
-                cmd,
-                atyp,
-                read_exact!(stream, [0u8; 16])?,
-                read_exact!(stream, [0u8; 2])?,
-            ),
+            socks_consts::SOCKS5_ADDR_TYPE_IPV4 => {
+                let ip = read_exact!(stream, [0u8; 4])?;
+                let port = read_exact!(stream, [0u8; 2])?;
+                let port = (port[0] as u16) << 8 | port[1] as u16;
+                ByteAddr::V4(cmd, atyp, ip, port)
+            }
+            socks_consts::SOCKS5_ADDR_TYPE_IPV6 => {
+                let ip = read_exact!(stream, [0u8; 16])?;
+                let port = read_exact!(stream, [0u8; 2])?;
+                let port = (port[0] as u16) << 8 | port[1] as u16;
+                ByteAddr::V6(cmd, atyp, ip, port)
+            }
             socks_consts::SOCKS5_ADDR_TYPE_DOMAIN_NAME => {
                 let len = read_exact!(stream, [0])?[0];
                 let domain = read_exact!(stream, vec![0u8; len as usize])?;
+                let port = read_exact!(stream, [0u8; 2])?;
+                let port = (port[0] as u16) << 8 | port[1] as u16;
 
-                ByteAddr::Domain(cmd, atyp, domain, read_exact!(stream, [0u8; 2])?)
+                ByteAddr::Domain(cmd, atyp, domain, port)
             }
             _ => return Err(anyhow!("unknown address type")),
         };
 
         Ok(addr)
+    }
+
+    pub fn from(host: &str) -> anyhow::Result<Self> {
+        debug!("ByteAddr from host :{}", host);
+        let host_port: Vec<&str> = host.split(':').collect();
+        if host_port.len() != 2 {
+            return Err(anyhow!("parse host err"));
+        }
+        let domain = host_port.get(0).unwrap().as_bytes().to_vec();
+        let port = atoi::atoi::<u16>(host_port.get(1).unwrap().as_bytes())
+            .ok_or_else(|| anyhow!("port parse err"))?;
+
+        Ok(ByteAddr::Domain(0x01, 0x03, domain, port))
+    }
+}
+
+#[derive(Clone)]
+pub struct SyncSocket {
+    stream: Arc<Mutex<TcpStream>>,
+}
+
+impl SyncSocket {
+    pub fn new(stream: TcpStream) -> Self {
+        SyncSocket {
+            stream: Arc::new(Mutex::new(stream)),
+        }
+    }
+}
+
+impl AsyncRead for SyncSocket {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        AsyncRead::poll_read(Pin::new(&mut *self.stream.lock().unwrap()), cx, buf)
+    }
+}
+
+impl AsyncWrite for SyncSocket {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, std::io::Error>> {
+        AsyncWrite::poll_write(Pin::new(&mut *self.stream.lock().unwrap()), cx, buf)
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+        AsyncWrite::poll_flush(Pin::new(&mut *self.stream.lock().unwrap()), cx)
+    }
+
+    fn poll_shutdown(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+        AsyncWrite::poll_shutdown(Pin::new(&mut *self.stream.lock().unwrap()), cx)
     }
 }
 
@@ -405,15 +502,21 @@ mod tests {
     use crate::proxy::ByteAddr;
 
     #[test]
+    fn test_from_str() {
+        let ba = ByteAddr::from("baidu.com:443").unwrap();
+        println!("ba : {}", ba);
+    }
+
+    #[test]
     fn test_as_byte_addr() {
-        let byte_addr = ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], [0x00, 0x50]);
+        let byte_addr = ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], 80);
         let bs = byte_addr.as_bytes();
         assert_eq!(bs.as_slice(), [1, 1, 1, 1, 1, 1, 0, 80]);
     }
 
     #[tokio::test]
     async fn test_byte_addr_to_sa() {
-        let byte_addr = ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], [0x00, 0x50]);
+        let byte_addr = ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], 80);
         let sa = byte_addr.to_socket_addr().await.unwrap();
         assert!(sa.is_ipv4());
         assert_eq!(format!("{}", sa.ip()), "1.1.1.1");
@@ -425,10 +528,7 @@ mod tests {
         let vec = vec![0x01, 0x01, 0x01, 0x01, 0x00, 0x50];
         let mut buf = Cursor::new(vec);
         let addr = ByteAddr::read_addr(&mut buf, 0x01, 0x01).await.unwrap();
-        assert_eq!(
-            addr,
-            ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], [0x00, 0x50])
-        )
+        assert_eq!(addr, ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], 80))
     }
 }
 

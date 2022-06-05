@@ -79,7 +79,7 @@ ssl_enable: false
 remote_addr: 127.0.0.1:4880
 password: 58JCEmvcBkRAk1XkK1iH
 
-rats:
+holes:
   - name: test
     remote_addr: 127.0.0.1:4022
     local_addr: 127.0.0.1:22

@@ -1,13 +1,12 @@
 use log::info;
+use shuttle::proxy::{self, Dial};
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 
 use shuttle::config::{ClientConfig, ServerConfig};
 use shuttle::logs::init_log;
-use shuttle::proxy::{self, TrojanDial};
 use shuttle::store::ServerStore;
 
 #[tokio::test]
@@ -45,11 +44,7 @@ async fn start_server() {
 async fn start_socks() {
     let cc = ClientConfig::load(Option::Some(PathBuf::from("tests/examples/shuttlec.yaml")));
 
-    let dial = Arc::new(TrojanDial::new(
-        cc.remote_addr.clone(),
-        cc.hash.clone(),
-        cc.ssl_enable,
-    ));
+    let dial = Dial::Trojan(cc.remote_addr.clone(), cc.hash.clone(), cc.ssl_enable);
     proxy::start_proxy(&cc.proxy_addr, dial).await;
 }
 

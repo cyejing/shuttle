@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Parser;
@@ -7,7 +6,6 @@ use log::{error, info};
 
 use shuttle::config::ClientConfig;
 use shuttle::logs::init_log;
-use shuttle::proxy::{SocksDial, TrojanDial};
 use shuttle::{proxy, rathole};
 
 #[derive(Parser, Debug)]
@@ -16,8 +14,8 @@ struct Args {
     /// Config Path
     #[clap(parse(from_os_str), name = "CONFIG_PATH")]
     config_path: Option<PathBuf>,
-    #[clap(short, long, default_value = "dial")]
-    socks_mode: String,
+    #[clap(short, long, default_value = "trojan")]
+    proxy_mode: String,
 }
 
 #[tokio::main]
@@ -28,7 +26,7 @@ async fn main() {
 
     let cc = ClientConfig::load(args.config_path);
     match cc.run_type.as_str() {
-        "proxy" => start_proxy(cc, args.socks_mode).await,
+        "proxy" => start_proxy(cc, args.proxy_mode).await,
         "rathole" => start_rathole(cc).await,
         _ => panic!("unknown run type : {}", cc.run_type),
     }
@@ -58,16 +56,12 @@ async fn start_rathole(cc: ClientConfig) {
 async fn start_proxy(cc: ClientConfig, mode: String) {
     info!("run with socks");
     match mode.as_str() {
-        "dial" => {
-            let dial = Arc::new(TrojanDial::new(
-                cc.remote_addr.clone(),
-                cc.hash.clone(),
-                cc.ssl_enable,
-            ));
+        "trojan" => {
+            let dial = proxy::Dial::Trojan(cc.remote_addr.clone(), cc.hash.clone(), cc.ssl_enable);
             proxy::start_proxy(&cc.proxy_addr, dial).await;
         }
-        "socks" => {
-            let dial = Arc::new(SocksDial {});
+        "direct" => {
+            let dial = proxy::Dial::Direct;
             proxy::start_proxy(&cc.proxy_addr, dial).await;
         }
         _ => panic!("unknown socks mode"),
