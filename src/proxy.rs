@@ -66,8 +66,6 @@ struct SocksStream {
 
 impl HttpStream {
     async fn handle(&mut self, mut ts: TcpStream) -> anyhow::Result<()> {
-        // let host_mux = Arc::new(Mutex::new(String::new()));
-        // let mut ts_mux = SyncSocket::new(ts);
         let mut http = Http::new();
         http.read(&mut ts).await?;
 
