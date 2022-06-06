@@ -43,9 +43,6 @@ jobs:
           - os: macOS-latest
             target: x86_64-apple-darwin
             name: shuttle-x86_64-apple-darwin.tgz
-          - os: macOS-latest
-            target: aarch64-apple-darwin
-            name: shuttle-aarch64-apple-darwin.tgz
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -73,7 +70,6 @@ jobs:
           target: ${{ matrix.target }}
 
       - name: Build | Build
-        if: matrix.target != 'aarch64-apple-darwin'
         uses: actions-rs/cargo@v1
         with:
           command: build
