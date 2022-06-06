@@ -77,7 +77,7 @@ pub mod tls {
             .split(':')
             .next()
             .ok_or_else(|| anyhow!("domain parse error : {}", domain))?;
-        debug!("Parse domain is : {}", domain);
+        debug!("Server name parse is : {}", domain);
         rustls::ServerName::try_from(domain)
             .map_err(|e| anyhow!("try from domain [{}] to server name err : {}", &domain, e))
     }

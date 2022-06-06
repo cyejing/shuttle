@@ -206,7 +206,7 @@ impl ServerHandler {
         let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
 
         tokio::select! {
-            r = tokio::io::copy_bidirectional(stream, &mut cs) => {r.context("Trojan io copy end")?;},
+            _ = tokio::io::copy_bidirectional(stream, &mut cs) => debug!("Trojan io copy end"),
             _ = self.shutdown.recv() => debug!("recv shutdown signal"),
         }
         Ok(())
@@ -228,7 +228,7 @@ impl ServerHandler {
             .context("Proxy can't write prefetch head")?;
 
         tokio::select! {
-            r = tokio::io::copy_bidirectional(stream, &mut ls) => {r.context("Proxy io copy end")?;},
+            _ = tokio::io::copy_bidirectional(stream, &mut ls) => debug!("Trojan io copy end"),
             _ = self.shutdown.recv() => debug!("recv shutdown signal"),
         }
         Ok(())
@@ -246,7 +246,7 @@ impl ServerHandler {
         let (mut dispatcher, cs) = Dispatcher::new(stream, hash_str.clone());
         self.store.set_cmd_sender(cs).await;
         tokio::select! {
-            r = dispatcher.dispatch() => debug!("dispatch end {:?}",r),
+            r = dispatcher.dispatch() => debug!("dispatch end {:?}", r),
             _ = self.shutdown.recv() => debug!("recv shutdown signal"),
         };
         drop(dispatcher);

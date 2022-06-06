@@ -1,14 +1,9 @@
 use std::fmt::{Display, Formatter};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
-use std::task::Poll;
 
 use anyhow::{anyhow, Context};
 use itertools::Itertools;
-use tokio::io::{
-    self, copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf,
-};
+use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
 
@@ -47,9 +42,19 @@ async fn handle(ts: TcpStream, dial: Dial) -> anyhow::Result<()> {
     ts.peek(&mut fb).await?;
 
     if fb[0] == socks_consts::SOCKS5_VERSION {
+        debug!(
+            "Socks proxy connection {:?} to {:?}",
+            ts.peer_addr().ok(),
+            ts.local_addr().ok()
+        );
         let mut ss = SocksStream { ts, dial };
         ss.handle().await
     } else {
+        debug!(
+            "Http proxy connection {:?} to {:?}",
+            ts.peer_addr().ok(),
+            ts.local_addr().ok()
+        );
         let mut hs = HttpStream { dial };
         hs.handle(ts).await
     }
@@ -70,7 +75,7 @@ impl HttpStream {
         http.read(&mut ts).await?;
 
         let addr = ByteAddr::from(&http.host.ok_or_else(|| anyhow!("Http Host empty"))?)?;
-        debug!("Http proxy addr: {}", addr);
+        info!("Requested http connection to: {addr}", addr = addr,);
         match self
             .dial
             .dial(addr)
@@ -83,9 +88,7 @@ impl HttpStream {
                 } else {
                     rts.write_all(http.buf.as_slice()).await?;
                 }
-                copy_bidirectional(&mut rts, &mut ts)
-                    .await
-                    .context("Http io copy err")?;
+                copy_bidirectional(&mut rts, &mut ts).await.ok();
             }
             TLS(mut rts) => {
                 if http.connect {
@@ -93,9 +96,7 @@ impl HttpStream {
                 } else {
                     rts.write_all(http.buf.as_slice()).await?;
                 }
-                copy_bidirectional(&mut rts, &mut ts)
-                    .await
-                    .context("Http io copy err")?;
+                copy_bidirectional(&mut rts, &mut ts).await.ok();
             }
         };
         Ok(())
@@ -119,15 +120,11 @@ impl SocksStream {
         {
             TCP(mut rts) => {
                 self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED).await?;
-                copy_bidirectional(&mut rts, &mut self.ts)
-                    .await
-                    .context("Socks io copy err")?;
+                copy_bidirectional(&mut rts, &mut self.ts).await.ok();
             }
             TLS(mut rts) => {
                 self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED).await?;
-                copy_bidirectional(&mut rts, &mut self.ts)
-                    .await
-                    .context("Socks io copy err")?;
+                copy_bidirectional(&mut rts, &mut self.ts).await.ok();
             }
         };
 
@@ -172,7 +169,7 @@ impl SocksStream {
 
         let addr = ByteAddr::read_addr(&mut self.ts, cmd, address_type).await?;
 
-        info!("Requested connection to: {addr}", addr = addr,);
+        info!("Requested socks connection to: {addr}", addr = addr,);
 
         Ok(addr)
     }
@@ -473,53 +470,6 @@ impl Http {
                 }
             }
         }
-    }
-}
-
-#[derive(Clone)]
-pub struct SyncSocket {
-    stream: Arc<Mutex<TcpStream>>,
-}
-
-impl SyncSocket {
-    pub fn new(stream: TcpStream) -> Self {
-        SyncSocket {
-            stream: Arc::new(Mutex::new(stream)),
-        }
-    }
-}
-
-impl AsyncRead for SyncSocket {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        AsyncRead::poll_read(Pin::new(&mut *self.stream.lock().unwrap()), cx, buf)
-    }
-}
-
-impl AsyncWrite for SyncSocket {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize, std::io::Error>> {
-        AsyncWrite::poll_write(Pin::new(&mut *self.stream.lock().unwrap()), cx, buf)
-    }
-
-    fn poll_flush(
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), std::io::Error>> {
-        AsyncWrite::poll_flush(Pin::new(&mut *self.stream.lock().unwrap()), cx)
-    }
-
-    fn poll_shutdown(
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), std::io::Error>> {
-        AsyncWrite::poll_shutdown(Pin::new(&mut *self.stream.lock().unwrap()), cx)
     }
 }
 
