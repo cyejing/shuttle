@@ -41,10 +41,9 @@ trojan:
 配置参数
 ```yaml
 run_type: proxy #运行类型 代理模式
-name: proxy
 ssl_enable: true
 proxy_addr: 127.0.0.1:4080 #本地代理地址
-remote_addr: cyejing.cn:4843 #服务器地址
+remote_addr: 127.0.0.1:4840 #服务器地址
 password: sQtfRnfhcNoZYZh1wY9u #对应服务器密码
 
 ```
@@ -74,7 +73,6 @@ rathole:
 配置参数
 ```yaml
 run_type: rathole
-name: unique-name
 ssl_enable: false
 remote_addr: 127.0.0.1:4880
 password: 58JCEmvcBkRAk1XkK1iH
