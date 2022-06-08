@@ -121,11 +121,6 @@ impl CommandSender {
         }
     }
 
-    pub async fn send(&self, cmd: Command) -> anyhow::Result<()> {
-        let req_id = self.id_adder.add_and_get().await;
-        Ok(self.sender.send((req_id, cmd, None)).await?)
-    }
-
     pub async fn send_with_id(&self, req_id: u64, cmd: Command) -> anyhow::Result<()> {
         Ok(self.sender.send((req_id, cmd, None)).await?)
     }

@@ -64,7 +64,7 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let hcs = command_sender.clone();
     let heartbeat = tokio::spawn(async move {
         loop {
-            hcs.send(Command::Ping(Ping::new(None))).await?;
+            hcs.send_sync(Command::Ping(Ping::new(None))).await?;
             tokio::time::sleep(Duration::from_secs(10)).await;
         }
     });
@@ -110,18 +110,18 @@ async fn exchange_copy(
 }
 
 async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: context::Context) -> anyhow::Result<()> {
-    let mut buf = BytesMut::with_capacity(24 * 1024);
+    let mut buf = BytesMut::with_capacity(4 * 1024);
     let len = r
         .read_buf(&mut buf)
         .await
         .context("connection read byte err")?;
     if len > 0 {
         let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), buf.freeze()));
-        context.command_sender.send(exchange).await?;
+        context.command_sender.send_sync(exchange).await?;
         Ok(())
     } else {
         let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), Bytes::new()));
-        context.command_sender.send(exchange).await?;
+        context.command_sender.send_sync(exchange).await?;
         Err(anyhow!("exchange local conn EOF"))
     }
 }
