@@ -1,0 +1,9 @@
+run_type: rathole
+ssl_enable: false
+remote_addr: 127.0.0.1:4980
+password: 58JCEmvcBkRAk1XkK1iH
+
+holes:
+  - name: test
+    remote_addr: 127.0.0.1:6788
+    local_addr: 127.0.0.1:6789

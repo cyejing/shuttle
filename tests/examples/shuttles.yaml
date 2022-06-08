@@ -1,7 +1,7 @@
 addrs:
-  - addr: 127.0.0.1:4880
+  - addr: 127.0.0.1:4980
 trojan:
-  local_addr: 127.0.0.1:80 #nginx
+  local_addr: 127.0.0.1:8800 #nginx
   passwords:
     - sQtfRnfhcNoZYZh1wY9u
 rathole:

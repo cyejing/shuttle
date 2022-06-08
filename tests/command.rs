@@ -1,15 +1,17 @@
-use log::error;
-use tokio::io;
-use tokio::net::{TcpListener, TcpStream};
-
+mod common;
+use log::info;
 use shuttle::logs::init_log;
+use tokio::io;
+
 use shuttle::rathole::cmd::ping::Ping;
 use shuttle::rathole::cmd::Command;
-use shuttle::rathole::dispatcher::{CommandRead, CommandWrite, Dispatcher};
+use shuttle::rathole::dispatcher::{CommandRead, CommandWrite};
+use tokio::net::TcpStream;
 
 #[tokio::test]
 async fn test_ping() {
-    start_command_server().await;
+    init_log();
+    common::start_command_server().await;
     let stream = TcpStream::connect("127.0.0.1:6789").await.unwrap();
     let (r, w) = io::split(stream);
     let mut command_write = CommandWrite::new(w);
@@ -18,23 +20,6 @@ async fn test_ping() {
     command_write.write_command(10, ping).await.unwrap();
 
     let resp = command_read.read_command().await.unwrap();
-    println!("{:?}", resp);
+    info!("{:?}", resp);
     assert_eq!(format!("{:?}", resp), "(10, Resp(Ok(\"hi\")))");
-}
-
-async fn start_command_server() {
-    init_log();
-    let listener = TcpListener::bind("127.0.0.1:6789").await.unwrap();
-    tokio::spawn(async move {
-        loop {
-            let (stream, _) = listener.accept().await.unwrap();
-            let (mut dispatcher, _cs) = Dispatcher::new(stream, String::from("hash"));
-
-            tokio::spawn(async move {
-                if let Err(e) = dispatcher.dispatch().await {
-                    error!("{}", e);
-                }
-            });
-        }
-    });
 }
