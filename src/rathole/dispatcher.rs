@@ -43,7 +43,7 @@ struct Heartbeat {
 
 impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
     pub fn new(stream: T, hash: String) -> (Self, Arc<CommandSender>) {
-        let (sender, receiver) = mpsc::channel(128);
+        let (sender, receiver) = mpsc::channel(1);
         let command_sender = Arc::new(CommandSender::new(hash, sender));
         let context = context::Context::new(command_sender.clone());
         let (read, write) = io::split(stream);

@@ -103,7 +103,7 @@ impl ProxyServer {
         loop {
             let (ts, _) = listener.accept().await?;
             info!("accept proxy conn");
-            let (tx, rx) = mpsc::channel(24);
+            let (tx, rx) = mpsc::channel(1);
 
             let conn_id = self.id_adder.add_and_get().await;
             let conn_sender = Arc::new(ConnSender::new(conn_id, tx));

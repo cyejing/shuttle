@@ -52,6 +52,8 @@ impl CommandApply for Exchange {
                 }
             }
             None => {
+                // let exchange = Command::Exchange(Exchange::new(conn_id, Bytes::new()));
+                // context.command_sender.send(exchange).await?;
                 error!("exchange conn close");
             }
         }

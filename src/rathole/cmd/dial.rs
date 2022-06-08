@@ -67,7 +67,7 @@ impl DialConn {
         let conn_id = self.conn_id;
 
         tokio::spawn(async move {
-            let (tx, rx) = mpsc::channel(24);
+            let (tx, rx) = mpsc::channel(1);
             let conn_sender = Arc::new(ConnSender::new(conn_id, tx));
             context.with_conn_id(conn_id);
             context.set_conn_sender(conn_sender).await;

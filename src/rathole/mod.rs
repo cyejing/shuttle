@@ -110,8 +110,11 @@ async fn exchange_copy(
 }
 
 async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: context::Context) -> anyhow::Result<()> {
-    let mut buf = BytesMut::with_capacity(4 * 1024);
-    let len = r.read_buf(&mut buf).await?;
+    let mut buf = BytesMut::with_capacity(24 * 1024);
+    let len = r
+        .read_buf(&mut buf)
+        .await
+        .context("connection read byte err")?;
     if len > 0 {
         let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), buf.freeze()));
         context.command_sender.send(exchange).await?;
@@ -131,7 +134,9 @@ async fn write_bytes(
         if bytes.is_empty() {
             Err(anyhow!("exchange remote conn close"))
         } else {
-            w.write_all(&bytes).await?;
+            w.write_all(&bytes)
+                .await
+                .context("connection write byte err")?;
             Ok(())
         }
     } else {
