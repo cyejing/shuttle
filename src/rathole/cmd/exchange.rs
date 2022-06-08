@@ -57,6 +57,6 @@ impl CommandApply for Exchange {
                 error!("exchange conn close");
             }
         }
-        Ok(None)
+        Ok(Some(Resp::Ok("ok".to_string())))
     }
 }
