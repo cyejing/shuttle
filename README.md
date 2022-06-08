@@ -20,7 +20,7 @@ Shuttle让互联网更简单
 
 ### 加密上网使用
 #### Start Server
-``./shuttles -c example/shuttles.yaml``
+``./shuttles example/shuttles.yaml``
 
 配置参数
 ```yaml
@@ -36,7 +36,7 @@ trojan:
     - sQtfRnfhcNoZYZh1wY9u
 ```
 #### Start Client
-``./shuttlec -c example/shuttlec-proxy.yaml``
+``./shuttlec example/shuttlec-proxy.yaml``
 
 配置参数
 ```yaml
@@ -53,7 +53,7 @@ Enjoy
 
 ### 内网穿透使用
 #### Start Server
-``./shuttles -c example/shuttles.yaml``
+``./shuttles example/shuttles.yaml``
 
 配置参数
 ```yaml
@@ -68,7 +68,7 @@ rathole:
     - 58JCEmvcBkRAk1XkK1iH
 ```
 #### Start Client
-``./shuttlec -c example/shuttlec-rathole.yaml``
+``./shuttlec example/shuttlec-rathole.yaml``
 
 配置参数
 ```yaml
