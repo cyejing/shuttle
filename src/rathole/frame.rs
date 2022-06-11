@@ -265,10 +265,16 @@ impl fmt::Display for Frame {
             Frame::Simple(response) => response.fmt(fmt),
             Frame::Error(msg) => write!(fmt, "error: {}", msg),
             Frame::Integer(num) => num.fmt(fmt),
-            Frame::Bulk(msg) => match str::from_utf8(msg) {
-                Ok(string) => string.fmt(fmt),
-                Err(_) => write!(fmt, "{:?}", msg),
-            },
+            Frame::Bulk(msg) => {
+                if msg.len() <= 128 {
+                    match str::from_utf8(msg) {
+                        Ok(string) => string.fmt(fmt),
+                        Err(_) => write!(fmt, "{:?}", msg),
+                    }
+                } else {
+                    msg.len().fmt(fmt)
+                }
+            }
             Frame::Null => "(nil)".fmt(fmt),
             Frame::Array(parts) => {
                 write!(fmt, "[")?;

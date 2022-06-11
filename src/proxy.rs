@@ -20,7 +20,7 @@ pub async fn start_proxy(addr: &str, dial: Dial) {
     info!("Listen for socks connections @ {}", addr);
     tokio::spawn(async move {
         if let Err(e) = serve(listener, dial).await {
-            error!("Socks run err : {}", e);
+            error!("Socks run err : {:?}", e);
         }
     });
 }
@@ -119,11 +119,25 @@ impl SocksStream {
             .context("Socks can't dial remote addr")?
         {
             TCP(mut rts) => {
-                self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED).await?;
+                self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED)
+                    .await
+                    .context("Socks send succeeded reply")?;
+                debug!(
+                    "Start io copy {:?} <=> {:?}",
+                    rts.peer_addr(),
+                    self.ts.peer_addr()
+                );
                 copy_bidirectional(&mut rts, &mut self.ts).await.ok();
             }
             TLS(mut rts) => {
-                self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED).await?;
+                self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED)
+                    .await
+                    .context("Socks send succeeded reply")?;
+                debug!(
+                    "Start io copy {:?} <=> {:?}",
+                    rts.get_ref().0.peer_addr(),
+                    self.ts.peer_addr()
+                );
                 copy_bidirectional(&mut rts, &mut self.ts).await.ok();
             }
         };
@@ -218,12 +232,14 @@ impl Dial {
                 let tts = TcpStream::connect(addr_str)
                     .await
                     .context(format!("Socks can't connect addr {}", addr_str))?;
+                debug!("Dail mode direct success {}", addr_str);
                 Ok(DialStream::TCP(Box::new(tts)))
             }
             Dial::Trojan(remote_addr, hash, ssl_enable) => {
                 let mut tts = TcpStream::connect(remote_addr)
                     .await
                     .context(format!("Trojan can't connect remote {}", remote_addr))?;
+                debug!("Dial mode trojan success {}", remote_addr);
                 let mut buf: Vec<u8> = vec![];
                 buf.extend_from_slice(hash.as_bytes());
                 buf.extend_from_slice(&CRLF);

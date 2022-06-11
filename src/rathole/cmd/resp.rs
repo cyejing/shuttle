@@ -51,8 +51,10 @@ impl CommandApply for Resp {
                 Resp::Err(msg) => s.send(Err(anyhow!(msg.to_string()))),
             };
             if sr.is_err() {
-                error!("req {:?} channel close", context.current_req_id);
+                error!("req {:?} channel close: {:?}", context.current_req_id, sr);
             }
+        } else {
+            error!("req {:?} is None", context.current_req_id);
         };
         Ok(None)
     }

@@ -12,6 +12,7 @@ clean:
 	cargo clean
 
 check: 
+	cargo fmt
 	cargo check
 	cargo fmt --check -v
 	cargo clippy -- -D warnings

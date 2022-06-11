@@ -29,8 +29,9 @@ impl Context {
         }
     }
 
-    pub(crate) fn with_req_id(&mut self, req_id: u64) {
+    pub(crate) fn with_req_id(&mut self, req_id: u64) -> &Self {
         self.current_req_id = Some(req_id);
+        self
     }
 
     pub(crate) fn with_conn_id(&mut self, conn_id: u64) {
@@ -38,6 +39,11 @@ impl Context {
     }
 
     pub(crate) async fn set_req(&self, req_channel: ReqChannel) {
+        trace!(
+            "Context set req {:?} {:?}",
+            self.current_req_id,
+            req_channel
+        );
         if let Some(req_id) = self.current_req_id {
             if req_channel.is_some() {
                 self.req_map.lock().await.insert(req_id, req_channel);
@@ -46,6 +52,7 @@ impl Context {
     }
 
     pub(crate) async fn get_req(&self) -> Option<ReqChannel> {
+        trace!("Context get req {:?}", self.current_req_id);
         match &self.current_req_id {
             Some(req_id) => {
                 return self.req_map.lock().await.remove(req_id);
@@ -55,10 +62,12 @@ impl Context {
     }
 
     pub(crate) async fn set_conn_sender(&self, sender: Arc<ConnSender>) {
+        trace!("Context set conn sender {:?}", sender);
         self.conn_map.lock().await.insert(sender.conn_id, sender);
     }
 
     pub(crate) async fn get_conn_sender(&self) -> Option<Arc<ConnSender>> {
+        trace!("Context get conn sender {:?}", self.current_conn_id);
         match &self.current_conn_id {
             Some(conn_id) => self.conn_map.lock().await.get(conn_id).cloned(),
             None => panic!("context current conn id is empty"),
@@ -66,6 +75,7 @@ impl Context {
     }
 
     pub(crate) async fn remove_conn_sender(&self) {
+        trace!("Context remove conn sender {:?}", self.current_conn_id);
         match &self.current_conn_id {
             Some(conn_id) => {
                 let discard = self.conn_map.lock().await.remove(conn_id);
@@ -129,7 +139,12 @@ impl CommandSender {
         let (tx, rx) = oneshot::channel();
         let req_id = self.id_adder.add_and_get().await;
         self.sender.send((req_id, cmd, Some(tx))).await?;
-        rx.await?
+        trace!("send_sync {} send", req_id);
+        if let Err(e) = rx.await {
+            error!("send_sync {} await resp err {}", req_id, e);
+        }
+        trace!("send_sync {} recv resp", req_id);
+        Ok(())
     }
 }
 
@@ -153,3 +168,6 @@ impl IdAdder {
         *i
     }
 }
+
+#[cfg(test)]
+mod tests {}

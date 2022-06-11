@@ -59,10 +59,8 @@ impl Server {
     async fn run(&mut self) -> anyhow::Result<()> {
         loop {
             let socket = self.accept().await.context("Server Can't accept conn")?;
-            let peer_addr = socket
-                .peer_addr()
-                .map(Option::Some)
-                .unwrap_or_else(|_e| Option::None);
+            let peer_addr = socket.peer_addr().ok();
+            debug!("Server apccept conn {:?}", peer_addr);
 
             let mut handler = ServerHandler {
                 peer_addr,
@@ -142,6 +140,7 @@ impl ServerHandler {
         stream: T,
     ) -> anyhow::Result<ConnType> {
         let head = self.read_head(stream).await.context("Can't read head")?;
+        trace!("Detect head {}", String::from_utf8_lossy(head.as_slice()));
         if head.len() < 56 {
             return Ok(ConnType::Proxy(head));
         }
@@ -202,6 +201,7 @@ impl ServerHandler {
         let mut cs = TcpStream::connect(socks_addr)
             .await
             .context(format!("Trojan can't connect addr {}", socks_addr))?;
+        debug!("Trojan connect success {:?}", socks_addr);
 
         let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
 
@@ -222,6 +222,7 @@ impl ServerHandler {
         let mut ls = TcpStream::connect(&trojan.local_addr)
             .await
             .context(format!("Proxy can't connect addr {}", &trojan.local_addr))?;
+        debug!("Proxy connect success {:?}", &trojan.local_addr);
 
         ls.write_all(head.as_slice())
             .await

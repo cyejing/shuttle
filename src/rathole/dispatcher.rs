@@ -70,20 +70,18 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
     }
 
     pub async fn dispatch(&mut self) -> anyhow::Result<()> {
-        loop {
-            tokio::select! {
-                r1 = Self::apply_command(
-                    &mut self.command_read,
-                    &mut self.heartbeat_sender,
-                    self.context.clone(),
-                ) => r1?,
-                r2 = Self::recv_command(
-                    &mut self.command_write,
-                    &mut self.receiver,
-                    self.context.clone(),
-                ) => r2?,
-                r3 = self.heartbeat.watch() => r3?
-            }
+        tokio::select! {
+            r1 = Self::apply_command(
+                &mut self.command_read,
+                &mut self.heartbeat_sender,
+                self.context.clone(),
+            ) => r1,
+            r2 = Self::recv_command(
+                &mut self.command_write,
+                &mut self.receiver,
+                self.context.clone(),
+            ) => r2,
+            r3 = self.heartbeat.watch() => r3,
         }
     }
 
@@ -92,51 +90,55 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
         heartbead_sender: &mut mpsc::Sender<()>,
         context: context::Context,
     ) -> anyhow::Result<()> {
-        let mut nc = context.clone();
+        loop {
+            let mut cn = context.clone();
 
-        let (req_id, cmd) = command_read
-            .read_command()
-            .await
-            .context("Dispatcher can't read command by conn")?;
-
-        heartbead_sender.send(()).await?;
-
-        nc.with_req_id(req_id);
-        let op_resp = cmd.apply(nc).await.context("Can't apply command")?;
-
-        if let Some(resp) = op_resp {
-            trace!("Send resp {:?}", resp);
-            context
-                .command_sender
-                .send_with_id(req_id, resp)
+            let (req_id, cmd) = command_read
+                .read_command()
                 .await
-                .context("Can't send command resp")?
+                .context("Dispatcher can't read command by conn")?;
+
+            heartbead_sender.send(()).await?;
+
+            cn.with_req_id(req_id);
+            let op_resp = cmd.apply(cn).await.context("Can't apply command")?;
+
+            if let Some(resp) = op_resp {
+                trace!("Send resp {:?}", resp);
+                context
+                    .command_sender
+                    .send_with_id(req_id, resp)
+                    .await
+                    .context("Can't send command resp")?
+            }
         }
-        Ok(())
     }
 
     async fn recv_command(
         command_write: &mut CommandWrite<T>,
         receiver: &mut mpsc::Receiver<CommandChannel>,
-        mut context: context::Context,
+        context: context::Context,
     ) -> anyhow::Result<()> {
-        let oc = receiver.recv().await;
-        trace!("recv command {:?}", oc);
-        match oc {
-            Some((req_id, cmd, rc)) => {
-                context.with_req_id(req_id);
-                context.set_req(rc).await;
-                command_write
-                    .write_command(req_id, cmd)
-                    .await
-                    .context("Can't write command")
-            }
-            None => Err(anyhow!("cmd receiver close")),
+        loop {
+            let mut cn = context.clone();
+            let oc = receiver.recv().await;
+            trace!("recv command {:?}", oc);
+            match oc {
+                Some((req_id, cmd, rc)) => {
+                    match cmd {
+                        Command::Resp(_) => {}
+                        _ => {
+                            cn.with_req_id(req_id).set_req(rc).await;
+                        }
+                    }
+                    command_write
+                        .write_command(req_id, cmd)
+                        .await
+                        .context("Can't write command")?;
+                }
+                None => return Err(anyhow!("cmd receiver close")),
+            };
         }
-    }
-
-    pub fn get_command_sender(&self) -> Arc<CommandSender> {
-        self.context.command_sender.clone()
     }
 }
 
@@ -150,7 +152,6 @@ impl<T: AsyncRead> CommandRead<T> {
 
     pub async fn read_command(&mut self) -> anyhow::Result<(u64, Command)> {
         let f = self.read_frame().await.context("Can't read frame")?;
-        trace!("read frame : {}", f);
         let (req_id, cmd) = Command::from_frame(f).context("Can't cover frame to command")?;
         Ok((req_id, cmd))
     }
@@ -158,6 +159,7 @@ impl<T: AsyncRead> CommandRead<T> {
     async fn read_frame(&mut self) -> anyhow::Result<Frame> {
         loop {
             if let Some(frame) = self.parse_frame().context("Can't parse frame")? {
+                trace!("read frame : {}", frame);
                 return Ok(frame);
             }
 
@@ -295,16 +297,17 @@ impl<T> Drop for Dispatcher<T> {
 
 impl Heartbeat {
     pub async fn watch(&mut self) -> anyhow::Result<()> {
+        let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             tokio::select! {
-                _ = self.receiver.recv() => {
+                _ = self.receiver.recv() =>{
                     self.beat_at = Instant::now();
                 },
-                _ = tokio::time::sleep(Duration::from_secs(10)) =>{
+                _ = interval.tick() => {
                     let elapsed = self.beat_at.elapsed().as_secs();
-                    debug!("last heartbeat at {}s ago",elapsed);
-                    if elapsed > 60{
-                        return Err(anyhow!("no have heartbeat in 30s"))
+                    debug!("last heartbeat at {}s ago", elapsed);
+                    if elapsed > 60 {
+                        return Err(anyhow!("no have heartbeat in 30s"));
                     }
                 }
             }

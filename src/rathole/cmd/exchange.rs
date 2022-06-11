@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
 use crate::rathole::context::Context;
@@ -5,7 +7,6 @@ use crate::rathole::frame::{Frame, Parse};
 use async_trait::async_trait;
 use bytes::Bytes;
 
-#[derive(Debug)]
 pub struct Exchange {
     conn_id: u64,
     body: Bytes,
@@ -52,11 +53,18 @@ impl CommandApply for Exchange {
                 }
             }
             None => {
-                // let exchange = Command::Exchange(Exchange::new(conn_id, Bytes::new()));
-                // context.command_sender.send(exchange).await?;
-                error!("exchange {:?} conn close", context.current_conn_id);
+                error!("exchange conn {} close", conn_id);
             }
         }
         Ok(Some(Resp::Ok("ok".to_string())))
+    }
+}
+
+impl Debug for Exchange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Exchange")
+            .field("conn_id", &self.conn_id)
+            .field("body", &self.body.len())
+            .finish()
     }
 }

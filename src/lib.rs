@@ -60,6 +60,7 @@ pub mod logs {
         env_logger::Builder::from_default_env()
             .filter_level(LevelFilter::Info)
             .parse_default_env()
+            .parse_write_style("auto")
             .init();
     }
 }

@@ -10,11 +10,12 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use crate::config::ClientConfig;
 use crate::rathole::cmd::exchange::Exchange;
 use crate::rathole::cmd::hole::Hole;
-use crate::rathole::cmd::ping::Ping;
 use crate::rathole::cmd::Command;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::tls::{make_server_name, make_tls_connector};
 use crate::CRLF;
+
+use self::cmd::ping::Ping;
 
 pub mod cmd;
 pub mod context;
@@ -100,29 +101,29 @@ async fn exchange_copy(
         "start stream copy by exchange conn_id: {:?}",
         context.current_conn_id
     );
-    loop {
-        tokio::select! {
-            r1 = read_bytes(&mut r, context.clone()) => r1?,
-            r2 = write_bytes(&mut w, &mut rx) => r2?,
-            _ = shutdown.recv() => debug!("exchange recv shutdown signal")
-        }
+    tokio::select! {
+        r1 = read_bytes(&mut r, context.clone()) => r1?,
+        r2 = write_bytes(&mut w, &mut rx) => r2?,
+        _ = shutdown.recv() => debug!("exchange recv shutdown signal")
     }
+    Ok(())
 }
 
 async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: context::Context) -> anyhow::Result<()> {
-    let mut buf = BytesMut::with_capacity(4 * 1024);
-    let len = r
-        .read_buf(&mut buf)
-        .await
-        .context("connection read byte err")?;
-    if len > 0 {
-        let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), buf.freeze()));
-        context.command_sender.send_sync(exchange).await?;
-        Ok(())
-    } else {
-        let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), Bytes::new()));
-        context.command_sender.send_sync(exchange).await?;
-        Err(anyhow!("exchange local conn EOF"))
+    loop {
+        let mut buf = BytesMut::with_capacity(4 * 1024);
+        let len = r
+            .read_buf(&mut buf)
+            .await
+            .context("connection read byte err")?;
+        if len > 0 {
+            let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), buf.freeze()));
+            context.command_sender.send_sync(exchange).await?;
+        } else {
+            let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), Bytes::new()));
+            context.command_sender.send_sync(exchange).await?;
+            return Err(anyhow!("exchange local conn EOF"));
+        }
     }
 }
 
@@ -130,17 +131,19 @@ async fn write_bytes(
     w: &mut WriteHalf<TcpStream>,
     rx: &mut mpsc::Receiver<Bytes>,
 ) -> anyhow::Result<()> {
-    if let Some(bytes) = rx.recv().await {
-        if bytes.is_empty() {
-            Err(anyhow!("exchange remote conn close"))
+    loop {
+        if let Some(bytes) = rx.recv().await {
+            trace!("recv exchange copy byte and write_all");
+            if bytes.is_empty() {
+                return Err(anyhow!("exchange remote conn close"));
+            } else {
+                w.write_all(&bytes)
+                    .await
+                    .context("connection write byte err")?;
+            }
         } else {
-            w.write_all(&bytes)
-                .await
-                .context("connection write byte err")?;
-            Ok(())
+            return Err(anyhow!("exchange receiver none"));
         }
-    } else {
-        Err(anyhow!("exchange receiver none"))
     }
 }
 
