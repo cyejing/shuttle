@@ -309,7 +309,7 @@ impl Heartbeat {
                     if elapsed > 60 {
                         return Err(anyhow!("no have heartbeat in 30s"));
                     }
-                }
+                },
             }
         }
     }
