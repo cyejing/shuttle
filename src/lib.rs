@@ -12,14 +12,14 @@ pub mod store;
 pub const CRLF: [u8; 2] = [0x0d, 0x0a];
 
 pub mod logs {
-    use log::LevelFilter;
 
     pub fn init_log() {
-        env_logger::Builder::from_default_env()
-            .filter_level(LevelFilter::Info)
-            .parse_default_env()
-            .parse_write_style("auto")
-            .init();
+        simple_logger::SimpleLogger::new()
+            .with_level(log::LevelFilter::Info)
+            .with_utc_offset(time::UtcOffset::from_hms(8, 0, 0).unwrap())
+            .env()
+            .init()
+            .unwrap();
     }
 }
 
