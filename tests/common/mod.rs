@@ -9,6 +9,7 @@ use shuttle::{
 };
 use tokio::{io::AsyncWriteExt, net::TcpListener};
 
+#[allow(dead_code)]
 pub async fn start_command_server() {
     let listener = TcpListener::bind("127.0.0.1:6789").await.unwrap();
     tokio::spawn(async move {
@@ -26,6 +27,7 @@ pub async fn start_command_server() {
     });
 }
 
+#[allow(dead_code)]
 pub async fn start_server(path: &str) {
     let config = ServerConfig::load(Option::Some(PathBuf::from(path)));
 
@@ -34,6 +36,7 @@ pub async fn start_server(path: &str) {
     shuttle::server::start_server(addr.clone(), store.clone()).await;
 }
 
+#[allow(dead_code)]
 pub async fn start_client(path: &str) {
     let cc = ClientConfig::load(Option::Some(PathBuf::from(path)));
     match cc.run_type.as_str() {
@@ -43,6 +46,7 @@ pub async fn start_client(path: &str) {
     }
 }
 
+#[allow(dead_code)]
 pub async fn start_web_server() {
     let listener = TcpListener::bind("127.0.0.1:6080").await.unwrap();
     info!("Listener web server 6080");
