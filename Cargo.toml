@@ -24,7 +24,6 @@ webpki-roots = "0.22.3"
 clap = { version = "3.1", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
-rust-crypto = "0.2"
 sha2 = "0.10"
 base16ct = { version = "0.1", features = ["alloc"] }
 
