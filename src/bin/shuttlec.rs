@@ -12,6 +12,7 @@ struct Args {
     /// Config Path
     #[clap(parse(from_os_str), name = "CONFIG_PATH")]
     config_path: Option<PathBuf>,
+    /// proxy func connect server e.g.a: trojan, direct
     #[clap(short, long, default_value = "trojan")]
     proxy_mode: String,
 }

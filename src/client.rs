@@ -4,21 +4,20 @@ use crate::{config::ClientConfig, proxy, rathole};
 
 pub async fn start_rathole(cc: ClientConfig) {
     info!("run with rathole");
-    let mut backoff = 100;
-
+    let mut backoff = 400;
     tokio::spawn(async move {
         loop {
             match rathole::start_rathole(cc.clone()).await {
                 Ok(_) => info!("rathole ok ?"),
                 Err(e) => error!("Rathole occurs err :{:?}", e),
             }
-            if backoff > 6400 {
-                backoff = 1200
+            if backoff > 3200 {
+                backoff = 400
             }
             info!("Retry after {} millis", backoff);
             tokio::time::sleep(Duration::from_millis(backoff)).await;
 
-            backoff *= 20;
+            backoff *= 2;
         }
     });
 }
