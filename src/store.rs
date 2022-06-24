@@ -21,7 +21,6 @@ impl ServerStore {
             .insert(sender.hash.clone(), sender);
     }
 
-    #[allow(dead_code)]
     pub(crate) async fn get_cmd_sender(&self, hash: &String) -> Option<Arc<CommandSender>> {
         self.cmd_map.read().await.get(hash).cloned()
     }

@@ -213,7 +213,6 @@ impl Parse {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn next_bytes(&mut self) -> anyhow::Result<Bytes, ParseError> {
         match self.next_part()? {
             Frame::Simple(s) => Ok(Bytes::from(s.into_bytes())),
@@ -226,7 +225,6 @@ impl Parse {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn next_int(&mut self) -> anyhow::Result<u64, ParseError> {
         use atoi::atoi;
 

@@ -1,5 +1,6 @@
 use crate::rathole::cmd::Command;
 use crate::rathole::{CommandChannel, ReqChannel};
+use anyhow::anyhow;
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -140,11 +141,16 @@ impl CommandSender {
         let req_id = self.id_adder.add_and_get().await;
         self.sender.send((req_id, cmd, Some(tx))).await?;
         trace!("send_sync {} send", req_id);
-        if let Err(e) = rx.await {
-            error!("send_sync {} await resp err {}", req_id, e);
+        match rx.await? {
+            Ok(_) => {
+                trace!("send_sync {} recv resp", req_id);
+                Ok(())
+            }
+            Err(e) => {
+                error!("send_sync {} await resp err {}", req_id, e);
+                Err(anyhow!(format!("await resp err {}", e)))
+            }
         }
-        trace!("send_sync {} recv resp", req_id);
-        Ok(())
     }
 }
 
