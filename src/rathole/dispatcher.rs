@@ -300,7 +300,10 @@ impl Heartbeat {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         loop {
             tokio::select! {
-                _ = self.receiver.recv() =>{
+                r = self.receiver.recv() =>{
+                    if r.is_none(){
+                        return Err(anyhow!("can't recv heartbeat"))
+                    }
                     self.beat_at = Instant::now();
                 },
                 _ = interval.tick() => {

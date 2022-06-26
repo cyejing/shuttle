@@ -50,12 +50,12 @@ impl CommandTo for Hole {
 #[async_trait]
 impl CommandApply for Hole {
     async fn apply(&self, context: context::Context) -> anyhow::Result<Option<Resp>> {
-        let proxy_server = ProxyServer::new(
+        let hole_server = HoleServer::new(
             self.remote_addr.clone(),
             self.local_addr.clone(),
             context.clone(),
         );
-        match proxy_server.start().await {
+        match hole_server.start().await {
             Ok(_) => Ok(Some(Resp::Ok("ok".to_string()))),
             Err(e) => {
                 error!("proxy start err : {:?}", e);
@@ -65,16 +65,16 @@ impl CommandApply for Hole {
     }
 }
 
-pub struct ProxyServer {
+pub struct HoleServer {
     addr: String,
     local_addr: String,
     context: context::Context,
     id_adder: IdAdder,
 }
 
-impl ProxyServer {
+impl HoleServer {
     pub fn new(addr: String, local_addr: String, context: context::Context) -> Self {
-        ProxyServer {
+        HoleServer {
             addr,
             local_addr,
             context,
