@@ -7,7 +7,7 @@ Shuttle让互联网更简单
 
 - tls加密上网
 - 内网穿透, 支持动态调节
-- rust轻量级程序
+- rust
 
 ## Architecture
 
@@ -84,5 +84,5 @@ holes:
 
 ```
 
-#### Enjoy
+#### 使用
 tcp -> remoteAddr -> localAddr
