@@ -6,7 +6,7 @@ Shuttle让互联网更简单
 ## Feature
 
 - tls加密上网
-- 内网穿透, 支持动态调节
+- 内网穿透, 支持动态调整
 
 ## Architecture
 
@@ -47,7 +47,8 @@ password: sQtfRnfhcNoZYZh1wY9u #对应服务器密码
 
 ```
 
-#### 浏览器设置socks5代理
+#### 使用
+浏览器设置socks5代理, 代理端口shuttlec.proxy_addr
 Enjoy
 
 ### 内网穿透使用
@@ -84,4 +85,4 @@ holes:
 ```
 
 #### 使用
-tcp -> remoteAddr -> localAddr
+connect -> remote_addr -> local_addr
