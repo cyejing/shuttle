@@ -48,7 +48,8 @@ password: sQtfRnfhcNoZYZh1wY9u #对应服务器密码
 ```
 
 #### 使用
-浏览器设置socks5代理, 代理端口shuttlec.proxy_addr
+浏览器设置socks5代理, 代理端口proxy_addr
+
 Enjoy
 
 ### 内网穿透使用
