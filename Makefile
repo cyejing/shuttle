@@ -8,6 +8,11 @@ COMMIT := `git rev-parse HEAD`
 build: 
 	cargo build --verbose
 
+test:
+	cargo fmt --check -v
+        cargo clippy -- -D warnings
+        cargo test --verbose
+
 clean:
 	cargo clean
 

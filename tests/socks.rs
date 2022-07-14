@@ -15,6 +15,7 @@ async fn test_socks() {
         .proxy(reqwest::Proxy::http("socks5://127.0.0.1:4080").unwrap())
         .build()
         .unwrap();
+
     let resp = client
         .get("http://127.0.0.1:6080")
         .send()
