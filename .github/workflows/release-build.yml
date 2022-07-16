@@ -83,7 +83,7 @@ jobs:
           cd target/${{ matrix.target }}/release
           strip shuttles.exe
           strip shuttlec.exe
-          7z a ../../../${{ matrix.name }} shuttles.exe shuttlec.exe examples\
+          7z a ../../../${{ matrix.name }} shuttles.exe shuttlec.exe .\examples\*
           cd -
       - name: Post Build | Prepare artifacts [unix]
         if: matrix.os != 'windows-latest'
