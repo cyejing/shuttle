@@ -79,19 +79,19 @@ jobs:
       - name: Post Build | Prepare artifacts [Windows]
         if: matrix.os == 'windows-latest'
         run: |
+          xcopy examples target/${{ matrix.target }}/release/examples
           cd target/${{ matrix.target }}/release
-          xcopy ../../../examples/* examples
           strip shuttles.exe
           strip shuttlec.exe
-          7z a ../../../${{ matrix.name }} shuttles.exe shuttlec.exe examples/*
+          7z a ../../../${{ matrix.name }} shuttles.exe shuttlec.exe examples
           cd -
       - name: Post Build | Prepare artifacts [unix]
         if: matrix.os != 'windows-latest'
         run: |
+          cp -r examples target/${{ matrix.target }}/release/examples
           cd target/${{ matrix.target }}/release
-          cp ../../../examples/* examples
           strip shuttles && strip shuttlec || true
-          tar czvf ../../../${{ matrix.name }} shuttles shuttlec examples/*
+          tar czvf ../../../${{ matrix.name }} shuttles shuttlec examples
           cd -
 
       - name: Deploy | Upload artifacts
