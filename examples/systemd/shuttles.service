@@ -1,0 +1,13 @@
+[Unit]
+Description=Shuttle Server Service
+After=network.target
+
+[Service]
+Type=simple
+User=nobody
+Restart=on-failure
+RestartSec=5s
+ExecStart=/opt/shuttle/shuttles
+
+[Install]
+WantedBy=multi-user.target

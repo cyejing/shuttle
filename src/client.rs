@@ -23,7 +23,7 @@ pub async fn start_rathole(cc: ClientConfig) {
 }
 
 pub async fn start_proxy(cc: ClientConfig, mode: String) {
-    info!("run with socks");
+    info!("run with proxy");
     match mode.as_str() {
         "trojan" => {
             let dial = proxy::Dial::Trojan(cc.remote_addr.clone(), cc.hash.clone(), cc.ssl_enable);

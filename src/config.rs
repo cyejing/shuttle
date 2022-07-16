@@ -97,10 +97,10 @@ impl ServerConfig {
 
 const DEFAULT_CLIENT_CONFIG_PATH: [&str; 6] = [
     "shuttlec.yaml",
-    "shuttlec-socks.yaml",
+    "shuttlec-proxy.yaml",
     "shuttlec-rathole.yaml",
     "examples/shuttlec.yaml",
-    "examples/shuttlec-socks.yaml",
+    "examples/shuttlec-proxy.yaml",
     "examples/shuttlec-rathole.yaml",
 ];
 
