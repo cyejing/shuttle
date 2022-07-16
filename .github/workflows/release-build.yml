@@ -79,11 +79,11 @@ jobs:
       - name: Post Build | Prepare artifacts [Windows]
         if: matrix.os == 'windows-latest'
         run: |
-          xcopy examples target\${{ matrix.target }}\release /s /e /y
+          xcopy examples target\${{ matrix.target }}\release\examples /s /e /y /i
           cd target/${{ matrix.target }}/release
           strip shuttles.exe
           strip shuttlec.exe
-          7z a ../../../${{ matrix.name }} shuttles.exe shuttlec.exe .\examples\*
+          7z a ../../../${{ matrix.name }} shuttles.exe shuttlec.exe examples
           cd -
       - name: Post Build | Prepare artifacts [unix]
         if: matrix.os != 'windows-latest'
