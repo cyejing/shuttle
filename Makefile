@@ -10,8 +10,8 @@ build:
 
 test:
 	cargo fmt --check -v
-        cargo clippy -- -D warnings
-        cargo test --verbose
+	cargo clippy -- -D warnings
+	cargo test --verbose
 
 clean:
 	cargo clean
