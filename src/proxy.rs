@@ -39,7 +39,9 @@ async fn serve(listener: TcpListener, dial: Dial) -> anyhow::Result<()> {
 
 async fn handle(ts: TcpStream, dial: Dial) -> anyhow::Result<()> {
     let mut fb = [0u8];
-    ts.peek(&mut fb).await?;
+    ts.peek(&mut fb)
+        .await
+        .context("Can't peek byte by proxy connection")?;
 
     if fb[0] == socks_consts::SOCKS5_VERSION {
         debug!(
@@ -229,39 +231,55 @@ impl Dial {
                     .to_socket_addr()
                     .await
                     .context("ByteAddr can't cover to socket addr")?;
-                let tts = TcpStream::connect(addr_str)
+                match TcpStream::connect(addr_str)
                     .await
-                    .context(format!("Socks can't connect addr {}", addr_str))?;
-                debug!("Dail mode direct success {}", addr_str);
-                Ok(DialStream::TCP(Box::new(tts)))
+                    .context(format!("Socks can't connect addr {}", addr_str))
+                {
+                    Ok(tts) => {
+                        debug!("Dail mode direct success {}", addr_str);
+                        Ok(DialStream::TCP(Box::new(tts)))
+                    }
+                    Err(e) => {
+                        error!("Can't connect socket server {}, {:?}", addr_str, e);
+                        Err(e)
+                    }
+                }
             }
             Dial::Trojan(remote_addr, hash, ssl_enable) => {
-                let mut tts = TcpStream::connect(remote_addr)
+                match TcpStream::connect(remote_addr)
                     .await
-                    .context(format!("Trojan can't connect remote {}", remote_addr))?;
-                debug!("Dial mode trojan success {}", remote_addr);
-                let mut buf: Vec<u8> = vec![];
-                buf.extend_from_slice(hash.as_bytes());
-                buf.extend_from_slice(&CRLF);
-                buf.extend_from_slice(ba.as_bytes().as_slice());
-                buf.extend_from_slice(&CRLF);
+                    .context(format!("Trojan can't connect remote {}", remote_addr))
+                {
+                    Err(e) => {
+                        error!("Can't connect trojan server {}, {:?}", remote_addr, e);
+                        Err(anyhow!(e))
+                    }
+                    Ok(mut tts) => {
+                        debug!("Dial mode trojan success {}", remote_addr);
+                        let mut buf: Vec<u8> = vec![];
+                        buf.extend_from_slice(hash.as_bytes());
+                        buf.extend_from_slice(&CRLF);
+                        buf.extend_from_slice(ba.as_bytes().as_slice());
+                        buf.extend_from_slice(&CRLF);
 
-                if *ssl_enable {
-                    let server_name = make_server_name(remote_addr.as_str())?;
-                    let mut ssl_tts = make_tls_connector()
-                        .connect(server_name, tts)
-                        .await
-                        .context("Trojan can't connect tls")?;
-                    ssl_tts
-                        .write_all(buf.as_slice())
-                        .await
-                        .context("Can't write trojan")?;
-                    Ok(TLS(Box::new(ssl_tts)))
-                } else {
-                    tts.write_all(buf.as_slice())
-                        .await
-                        .context("Can't write trojan")?;
-                    Ok(TCP(Box::new(tts)))
+                        if *ssl_enable {
+                            let server_name = make_server_name(remote_addr.as_str())?;
+                            let mut ssl_tts = make_tls_connector()
+                                .connect(server_name, tts)
+                                .await
+                                .context("Trojan can't connect tls")?;
+                            ssl_tts
+                                .write_all(buf.as_slice())
+                                .await
+                                .context("Can't write trojan")?;
+                            Ok(TLS(Box::new(ssl_tts)))
+                        } else {
+                            tts.write_all(buf.as_slice())
+                                .await
+                                .context("Can't write trojan")?;
+                            Ok(TCP(Box::new(tts)))
+                        }
+                    }
                 }
             }
         }

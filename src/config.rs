@@ -119,15 +119,15 @@ impl ClientConfig {
 fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {
     if let Some(pb) = path {
         let path_str = pb.to_str().unwrap();
-        info!("config file : {}", path_str);
+        info!("Load config file : {}", path_str);
         File::open(pb.as_path())
-            .context(format!("open config file {:?} err", path_str))
+            .context(format!("Can't load config file {:?}", path_str))
             .unwrap()
     } else {
         let mut of: Option<File> = None;
         for path in &default_paths {
             if let Ok(file) = File::open(*path) {
-                info!("config file : {}", *path);
+                info!("Load config file : {}", *path);
                 of = Some(file);
                 break;
             }
@@ -161,6 +161,7 @@ pub fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
         .unwrap();
     let mut reader = BufReader::new(cert_file);
     rustls_pemfile::certs(&mut reader)
+        .context(format!("Can't load cert file {}", filename))
         .unwrap()
         .iter()
         .map(|v| rustls::Certificate(v.clone()))
