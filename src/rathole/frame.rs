@@ -68,14 +68,13 @@ impl Frame {
     }
 
     pub(crate) fn push_req_id(self, req_id: u64) -> Frame {
-        let nf = match self {
+        match self {
             Frame::Array(mut vec) => {
                 vec.push(Frame::Integer(req_id));
                 Frame::Array(vec)
             }
             _ => panic!("not an array frame"),
-        };
-        nf
+        }
     }
 
     /// Checks if an entire message can be decoded from `src`

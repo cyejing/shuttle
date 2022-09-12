@@ -8,14 +8,14 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha224};
 use tokio_rustls::rustls;
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerConfig {
     pub addrs: Vec<Addr>,
     pub trojan: Trojan,
     pub rathole: RatHole,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientConfig {
     pub run_type: String,
     pub remote_addr: String,
@@ -30,7 +30,7 @@ pub struct ClientConfig {
     pub holes: Vec<Hole>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Addr {
     pub addr: String,
     pub cert: Option<String>,
@@ -43,14 +43,14 @@ pub struct Addr {
     pub key_loaded: Vec<rustls::PrivateKey>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RatHole {
     pub passwords: Vec<String>,
     #[serde(skip)]
     pub password_hash: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Trojan {
     pub local_addr: String,
     pub passwords: Vec<String>,
@@ -58,7 +58,7 @@ pub struct Trojan {
     pub password_hash: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hole {
     pub name: String,
     pub remote_addr: String,

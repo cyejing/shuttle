@@ -55,9 +55,7 @@ impl Context {
     pub(crate) async fn get_req(&self) -> Option<ReqChannel> {
         trace!("Context get req {:?}", self.current_req_id);
         match &self.current_req_id {
-            Some(req_id) => {
-                return self.req_map.lock().await.remove(req_id);
-            }
+            Some(req_id) => self.req_map.lock().await.remove(req_id),
             None => None,
         }
     }

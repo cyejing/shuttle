@@ -287,7 +287,7 @@ impl Dial {
 }
 
 // ByteAddr Definition
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ByteAddr {
     V4(u8, u8, [u8; 4], u16),
     V6(u8, u8, [u8; 16], u16),

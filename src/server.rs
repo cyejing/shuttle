@@ -149,7 +149,7 @@ impl ServerHandler {
         let trojan = self.store.trojan.clone();
         let rathole = self.store.rathole.clone();
 
-        return if trojan.password_hash.contains_key(&hash_str) {
+        if trojan.password_hash.contains_key(&hash_str) {
             debug!("{} detect trojan", hash_str);
             self.hash = Some(hash_str);
             Ok(ConnType::Trojan)
@@ -160,7 +160,7 @@ impl ServerHandler {
         } else {
             debug!("detect proxy");
             Ok(ConnType::Proxy(head))
-        };
+        }
     }
 
     async fn read_head<T: AsyncRead + AsyncWrite + Unpin>(
