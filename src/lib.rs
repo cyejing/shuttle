@@ -12,14 +12,35 @@ pub mod store;
 pub const CRLF: [u8; 2] = [0x0d, 0x0a];
 
 pub mod logs {
+    use std::mem::forget;
+
+    use tracing::metadata::LevelFilter;
+    use tracing_subscriber::{
+        fmt::layer, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt,
+        EnvFilter, Layer,
+    };
 
     pub fn init_log() {
-        simple_logger::SimpleLogger::new()
-            .with_level(log::LevelFilter::Info)
-            .with_utc_offset(time::UtcOffset::from_hms(8, 0, 0).unwrap())
-            .env()
-            .init()
-            .unwrap();
+        let (log_appender, g) =
+            tracing_appender::non_blocking(tracing_appender::rolling::daily("logs", "shuttle.log"));
+
+        let stdout = layer()
+            .with_line_number(true)
+            .with_filter(default_env_filter());
+        let log = layer()
+            .with_line_number(true)
+            .with_writer(log_appender)
+            .with_filter(default_env_filter());
+
+        tracing_subscriber::registry().with(stdout).with(log).init();
+
+        forget(g)
+    }
+
+    fn default_env_filter() -> EnvFilter {
+        EnvFilter::builder()
+            .with_default_directive(LevelFilter::INFO.into())
+            .from_env_lossy()
     }
 }
 

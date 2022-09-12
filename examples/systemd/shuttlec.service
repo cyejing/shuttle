@@ -7,7 +7,7 @@ Type=simple
 User=nobody
 Restart=on-failure
 RestartSec=5s
-ExecStart=/opt/shuttle/shuttlec shuttlec-rathole.yaml
+ExecStart=/opt/shuttle/shuttlec /opt/shuttle/shuttlec-rathole.yaml
 
 [Install]
 WantedBy=multi-user.target

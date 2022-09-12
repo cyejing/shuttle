@@ -7,7 +7,7 @@ Type=simple
 User=nobody
 Restart=on-failure
 RestartSec=5s
-ExecStart=/opt/shuttle/shuttles
+ExecStart=/opt/shuttle/shuttles /opt/shuttle/shuttles.yaml
 
 [Install]
 WantedBy=multi-user.target
