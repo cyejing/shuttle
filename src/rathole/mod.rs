@@ -31,6 +31,7 @@ pub async fn start_rathole(cc: ClientConfig) -> anyhow::Result<()> {
         .await
         .context(format!("Can't connect remote addr {}", remote_addr))?;
 
+    info!("Rathole connect remote {} success", remote_addr);
     if cc.ssl_enable {
         let domain = make_server_name(remote_addr)?;
         let tls_stream = make_tls_connector().connect(domain, stream).await?;
@@ -47,6 +48,7 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut buf: Vec<u8> = vec![];
     buf.extend_from_slice(cc.hash.as_bytes());
     buf.extend_from_slice(&CRLF);
+
     stream
         .write_all(buf.as_slice())
         .await

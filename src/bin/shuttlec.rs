@@ -1,19 +1,18 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{command, Parser};
 
 use shuttle::client::{start_proxy, start_rathole};
 use shuttle::config::ClientConfig;
 use shuttle::logs::init_log;
 
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None)]
 struct Args {
     /// Config Path
-    #[clap(parse(from_os_str), name = "CONFIG_PATH")]
     config_path: Option<PathBuf>,
     /// proxy func connect server e.g.a: trojan, direct
-    #[clap(short, long, default_value = "trojan")]
+    #[arg(short, long, default_value = "trojan")]
     proxy_mode: String,
 }
 

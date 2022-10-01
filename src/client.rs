@@ -8,7 +8,7 @@ pub async fn start_rathole(cc: ClientConfig) {
     tokio::spawn(async move {
         loop {
             match rathole::start_rathole(cc.clone()).await {
-                Ok(_) => info!("rathole ok ?"),
+                Ok(_) => info!("Rathole status ok"),
                 Err(e) => error!("Rathole occurs err :{:?}", e),
             }
             if backoff > 3200 {

@@ -2,47 +2,17 @@ extern crate core;
 #[macro_use]
 extern crate log;
 
+pub mod admin;
 pub mod client;
 pub mod config;
+pub mod logs;
 pub mod proxy;
 pub mod rathole;
 pub mod server;
 pub mod store;
+pub mod tls;
 
 pub const CRLF: [u8; 2] = [0x0d, 0x0a];
-
-pub mod logs {
-    use std::mem::forget;
-
-    use tracing::metadata::LevelFilter;
-    use tracing_subscriber::{
-        fmt::layer, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt,
-        EnvFilter, Layer,
-    };
-
-    pub fn init_log() {
-        let (log_appender, g) =
-            tracing_appender::non_blocking(tracing_appender::rolling::daily("logs", "shuttle.log"));
-
-        let stdout = layer()
-            .with_line_number(true)
-            .with_filter(default_env_filter());
-        let log = layer()
-            .with_line_number(true)
-            .with_writer(log_appender)
-            .with_filter(default_env_filter());
-
-        tracing_subscriber::registry().with(stdout).with(log).init();
-
-        forget(g)
-    }
-
-    fn default_env_filter() -> EnvFilter {
-        EnvFilter::builder()
-            .with_default_directive(LevelFilter::INFO.into())
-            .from_env_lossy()
-    }
-}
 
 #[macro_export]
 macro_rules! read_exact {
@@ -54,54 +24,4 @@ macro_rules! read_exact {
         //            .map_err(|_| io_err("lol"))?;
         $stream.read_exact(&mut x).await.map(|_| x)
     }};
-}
-
-pub mod tls {
-    use anyhow::{anyhow, Context};
-    use std::sync::Arc;
-
-    use tokio_rustls::rustls;
-    use tokio_rustls::rustls::{Certificate, OwnedTrustAnchor, PrivateKey};
-
-    pub fn make_tls_acceptor(
-        certs: Vec<Certificate>,
-        key: PrivateKey,
-    ) -> tokio_rustls::TlsAcceptor {
-        let config = rustls::ServerConfig::builder()
-            .with_safe_defaults()
-            .with_no_client_auth()
-            .with_single_cert(certs, key)
-            .context("Bad certificates/private key")
-            .unwrap();
-
-        tokio_rustls::TlsAcceptor::from(Arc::new(config))
-    }
-
-    pub fn make_tls_connector() -> tokio_rustls::TlsConnector {
-        let mut root_cert_store = rustls::RootCertStore::empty();
-        root_cert_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(
-            |ta| {
-                OwnedTrustAnchor::from_subject_spki_name_constraints(
-                    ta.subject,
-                    ta.spki,
-                    ta.name_constraints,
-                )
-            },
-        ));
-        let config = rustls::ClientConfig::builder()
-            .with_safe_defaults()
-            .with_root_certificates(root_cert_store)
-            .with_no_client_auth();
-        tokio_rustls::TlsConnector::from(Arc::new(config))
-    }
-
-    pub fn make_server_name(domain: &str) -> anyhow::Result<rustls::ServerName> {
-        let domain = domain
-            .split(':')
-            .next()
-            .ok_or_else(|| anyhow!("domain parse error : {}", domain))?;
-        debug!("Server name parse is : {}", domain);
-        rustls::ServerName::try_from(domain)
-            .map_err(|e| anyhow!("try from domain [{}] to server name err : {}", &domain, e))
-    }
 }

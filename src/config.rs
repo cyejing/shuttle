@@ -13,6 +13,7 @@ pub struct ServerConfig {
     pub addrs: Vec<Addr>,
     pub trojan: Trojan,
     pub rathole: RatHole,
+    pub admin: Option<Admin>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +64,12 @@ pub struct Hole {
     pub name: String,
     pub remote_addr: String,
     pub local_addr: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Admin {
+    #[serde(default = "default_admin_addr")]
+    pub addr: String,
 }
 
 const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["shuttles.yaml", "examples/shuttles.yaml"];
@@ -194,6 +201,10 @@ pub fn load_private_key(filename: &str) -> rustls::PrivateKey {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_admin_addr() -> String {
+    String::from("127.0.0.1:4845")
 }
 
 #[cfg(test)]
