@@ -116,7 +116,7 @@ impl HoleServer {
             context.command_sender.send_sync(dial).await?;
             tokio::spawn(async move {
                 if let Err(e) = exchange_copy(ts, rx, context.clone()).await {
-                    error!("exchange bytes err: {}", e);
+                    debug!("exchange copy close : {}", e);
                 }
                 context.remove_conn_sender().await;
             });

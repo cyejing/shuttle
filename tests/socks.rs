@@ -12,7 +12,7 @@ async fn test_socks() {
     common::start_client("tests/examples/shuttlec.yaml").await;
 
     let client = reqwest::Client::builder()
-        .proxy(reqwest::Proxy::http("socks5://127.0.0.1:4080").unwrap())
+        .proxy(reqwest::Proxy::http("socks5://127.0.0.1:4082").unwrap())
         .build()
         .unwrap();
 

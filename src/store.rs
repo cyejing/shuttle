@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use itertools::Itertools;
 use tokio::sync::RwLock;
 
 use crate::config::{RatHole, ServerConfig, Trojan};
@@ -24,6 +25,10 @@ impl ServerStore {
     #[allow(dead_code)]
     pub(crate) async fn get_cmd_sender(&self, hash: &String) -> Option<Arc<CommandSender>> {
         self.cmd_map.read().await.get(hash).cloned()
+    }
+
+    pub(crate) async fn list_cmd_sender(&self) -> Vec<Arc<CommandSender>> {
+        self.cmd_map.read().await.values().cloned().collect_vec()
     }
 
     pub(crate) async fn remove_cmd_sender(&self, hash: &String) {

@@ -1,5 +1,5 @@
 addrs:
-  - addr: 127.0.0.1:4980
+  - addr: 127.0.0.1:4982
 trojan:
   local_addr: 127.0.0.1:8800 #nginx
   passwords:

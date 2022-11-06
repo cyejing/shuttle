@@ -3,6 +3,8 @@ addrs:
 #    key: xxx
 #    cert: xxx
   - addr: 127.0.0.1:4880
+admin:
+  addr: 127.0.0.1:4890
 trojan:
   local_addr: 127.0.0.1:80 #nginx
   passwords:

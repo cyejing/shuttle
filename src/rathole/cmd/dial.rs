@@ -72,7 +72,7 @@ impl DialConn {
             context.with_conn_id(conn_id);
             context.set_conn_sender(conn_sender).await;
             if let Err(e) = exchange_copy(stream, rx, context.clone()).await {
-                error!("exchange bytes err: {}", e);
+                debug!("exchange copy close: {}", e);
             }
             context.remove_conn_sender().await;
         });
