@@ -196,12 +196,12 @@ impl ServerHandler {
         let socks_addr = byte_addr
             .to_socket_addr()
             .await
-            .context("Can't cover ByteAddr to SocksAddr")?;
+            .context(format!("Can't cover ByteAddr to SocksAddr {}", byte_addr))?;
 
         let mut cs = TcpStream::connect(socks_addr)
             .await
-            .context(format!("Trojan can't connect addr {}", socks_addr))?;
-        debug!("Trojan connect success {:?}", socks_addr);
+            .context(format!("Trojan can't connect addr {}", byte_addr))?;
+        debug!("Trojan connect success {:?}", byte_addr);
 
         let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
 

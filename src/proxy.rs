@@ -80,7 +80,7 @@ impl HttpStream {
         info!("Requested http connection to: {addr}", addr = addr,);
         match self
             .dial
-            .dial(addr)
+            .dial(&addr)
             .await
             .context("Http can't dial remote addr")?
         {
@@ -90,6 +90,7 @@ impl HttpStream {
                 } else {
                     rts.write_all(http.buf.as_slice()).await?;
                 }
+                debug!("Start copy stream {}", &addr);
                 copy_bidirectional(&mut rts, &mut ts).await.ok();
             }
             TLS(mut rts) => {
@@ -98,6 +99,7 @@ impl HttpStream {
                 } else {
                     rts.write_all(http.buf.as_slice()).await?;
                 }
+                debug!("Start copy stream {}", &addr);
                 copy_bidirectional(&mut rts, &mut ts).await.ok();
             }
         };
@@ -116,7 +118,7 @@ impl SocksStream {
 
         match self
             .dial
-            .dial(addr)
+            .dial(&addr)
             .await
             .context("Socks can't dial remote addr")?
         {
@@ -224,7 +226,7 @@ pub enum Dial {
 }
 
 impl Dial {
-    pub async fn dial(&self, ba: ByteAddr) -> anyhow::Result<DialStream> {
+    pub async fn dial(&self, ba: &ByteAddr) -> anyhow::Result<DialStream> {
         match self {
             Dial::Direct => {
                 let addr_str = ba
