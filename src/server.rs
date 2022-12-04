@@ -201,7 +201,7 @@ impl ServerHandler {
         let mut cs = TcpStream::connect(socks_addr)
             .await
             .context(format!("Trojan can't connect addr {}", byte_addr))?;
-        debug!("Trojan connect success {:?}", byte_addr);
+        debug!("Trojan connect success {}", byte_addr);
 
         let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
 
