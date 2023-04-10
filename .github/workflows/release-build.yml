@@ -26,6 +26,7 @@ jobs:
         run: cargo test --verbose
   cross:
     needs: test
+    
     strategy:
       fail-fast: false
       matrix:
@@ -50,8 +51,8 @@ jobs:
           - os: windows-latest
             target: i686-pc-windows-msvc
             name: shuttle-i686-pc-windows-msvc.zip
-
-
+    permissions:
+      contents: write
     runs-on: ${{ matrix.os }}
     env:
       RUST_BACKTRACE: full
@@ -110,4 +111,4 @@ jobs:
           files: ${{ matrix.name }}
           generate_release_notes: true
           prerelease: true
-          token: ${{ secrets.SHUTTLE_GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
