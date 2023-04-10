@@ -2,7 +2,6 @@ addrs:
   - addr: 127.0.0.1:4843
 #    key: xxx
 #    cert: xxx
-  - addr: 127.0.0.1:4880
 admin:
   addr: 127.0.0.1:4890
 trojan:
