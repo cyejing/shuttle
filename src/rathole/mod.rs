@@ -66,8 +66,13 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 
     let hcs = command_sender.clone();
     let heartbeat = tokio::spawn(async move {
+        // 每隔10分钟断开连接,防止墙检测
+        let mut last_ping = 10 * 60;
         loop {
-            hcs.send_sync(Command::Ping(Ping::new(None))).await?;
+            if last_ping > 0 {
+                hcs.send_sync(Command::Ping(Ping::new(None))).await?;
+                last_ping -= 10;
+            }
             tokio::time::sleep(Duration::from_secs(10)).await;
         }
     });
