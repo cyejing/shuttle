@@ -1,7 +1,7 @@
 [![ci-test-build](https://github.com/cyejing/shuttle/actions/workflows/ci-test-build.yml/badge.svg)](https://github.com/cyejing/shuttle/actions/workflows/ci-test-build.yml)
 
+Connect to networks without pain
 
-Shuttle让互联网更简单
 
 ## Feature
 
