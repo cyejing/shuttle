@@ -26,7 +26,12 @@ pub async fn start_proxy(cc: ClientConfig, mode: String) {
     info!("run with proxy");
     match mode.as_str() {
         "trojan" => {
-            let dial = proxy::Dial::Trojan(cc.remote_addr.clone(), cc.hash.clone(), cc.ssl_enable);
+            let dial = proxy::Dial::Trojan(
+                cc.remote_addr.clone(),
+                cc.hash.clone(),
+                cc.ssl_enable,
+                cc.invalid_certs,
+            );
             proxy::start_proxy(&cc.proxy_addr, dial).await;
         }
         "direct" => {

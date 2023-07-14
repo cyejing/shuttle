@@ -27,6 +27,8 @@ pub struct ClientConfig {
     pub proxy_addr: String,
     #[serde(default = "default_true")]
     pub ssl_enable: bool,
+    #[serde(default = "default_false")]
+    pub invalid_certs: bool,
     #[serde(default)]
     pub holes: Vec<Hole>,
 }
@@ -201,6 +203,10 @@ pub fn load_private_key(filename: &str) -> rustls::PrivateKey {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_false() -> bool {
+    false
 }
 
 fn default_admin_addr() -> String {

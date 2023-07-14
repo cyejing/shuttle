@@ -19,9 +19,10 @@ bytes = "1"
 async-trait = "0.1"
 anyhow = { version = "1" }
 
-tokio-rustls = "0.23"
+tokio-rustls = "0.24"
+rustls = { version = "0.21.0", default-features = false, features=["dangerous_configuration"] }
 rustls-pemfile = "1"
-webpki-roots = "0.22.3"
+webpki-roots = "0.24"
 
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }

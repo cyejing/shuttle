@@ -34,7 +34,9 @@ pub async fn start_rathole(cc: ClientConfig) -> anyhow::Result<()> {
     info!("Rathole connect remote {} success", remote_addr);
     if cc.ssl_enable {
         let domain = make_server_name(remote_addr)?;
-        let tls_stream = make_tls_connector().connect(domain, stream).await?;
+        let tls_stream = make_tls_connector(cc.invalid_certs)
+            .connect(domain, stream)
+            .await?;
         handle(tls_stream, cc).await
     } else {
         handle(stream, cc).await

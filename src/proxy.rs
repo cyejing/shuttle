@@ -222,7 +222,7 @@ pub enum DialStream {
 #[derive(Clone, Debug)]
 pub enum Dial {
     Direct,
-    Trojan(String, String, bool),
+    Trojan(String, String, bool, bool),
 }
 
 impl Dial {
@@ -247,7 +247,7 @@ impl Dial {
                     }
                 }
             }
-            Dial::Trojan(remote_addr, hash, ssl_enable) => {
+            Dial::Trojan(remote_addr, hash, ssl_enable, invalid_certs) => {
                 match TcpStream::connect(remote_addr)
                     .await
                     .context(format!("Trojan can't connect remote {}", remote_addr))
@@ -266,7 +266,7 @@ impl Dial {
 
                         if *ssl_enable {
                             let server_name = make_server_name(remote_addr.as_str())?;
-                            let mut ssl_tts = make_tls_connector()
+                            let mut ssl_tts = make_tls_connector(*invalid_certs)
                                 .connect(server_name, tts)
                                 .await
                                 .context("Trojan can't connect tls")?;
