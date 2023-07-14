@@ -1,5 +1,5 @@
 addrs:
-  - addr: 127.0.0.1:4843
+  - addr: 0.0.0.0:4843
 #    key: xxx
 #    cert: xxx
 admin:
@@ -11,4 +11,3 @@ trojan:
 rathole:
   passwords:
     - 58JCEmvcBkRAk1XkK1iH
-
