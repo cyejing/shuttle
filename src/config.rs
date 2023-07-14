@@ -83,7 +83,7 @@ impl ServerConfig {
         let mut sc: ServerConfig = serde_yaml::from_reader(file)
             .context("Can't serde read config file")
             .unwrap();
-        for mut addr in &mut sc.addrs {
+        for addr in &mut sc.addrs {
             if addr.cert.is_some() && addr.key.is_some() {
                 addr.ssl_enable = true;
                 addr.cert_loaded = load_certs(addr.cert.as_ref().unwrap());
