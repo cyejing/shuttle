@@ -1,6 +1,7 @@
 run_type: rathole
-ssl_enable: false
 remote_addr: 127.0.0.1:4982
+ssl_enable: true
+invalid_certs: true
 password: 58JCEmvcBkRAk1XkK1iH
 
 holes:

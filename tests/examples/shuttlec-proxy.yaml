@@ -1,5 +1,6 @@
 run_type: proxy
-ssl_enable: false
 proxy_addr: 127.0.0.1:4082
 remote_addr: 127.0.0.1:4982
+ssl_enable: true
+invalid_certs: true
 password: sQtfRnfhcNoZYZh1wY9u
