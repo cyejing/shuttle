@@ -21,7 +21,7 @@ Connect to networks without pain
 
 #### Start Server
 
-`./shuttles example/shuttles.yaml`
+`./shuttles examples/shuttles.yaml`
 
 配置参数
 
@@ -39,7 +39,7 @@ trojan:
 
 #### Start Client
 
-`./shuttlec example/shuttlec-proxy.yaml`
+`./shuttlec examples/shuttlec-proxy.yaml`
 
 配置参数
 
@@ -62,7 +62,7 @@ Enjoy
 
 #### Start Server
 
-`./shuttles example/shuttles.yaml`
+`./shuttles examples/shuttles.yaml`
 
 配置参数
 
@@ -79,7 +79,7 @@ rathole:
 
 #### Start Client
 
-`./shuttlec example/shuttlec-rathole.yaml`
+`./shuttlec examples/shuttlec-rathole.yaml`
 
 配置参数
 
