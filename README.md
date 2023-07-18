@@ -9,7 +9,7 @@ Connect to networks without pain
 
 ## Architecture
 
-![architecture](/doc/pic/architecture.png)
+![architecture](/docs/pic/architecture.png)
 
 ## Download
 
