@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "shuttle"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "async-trait",

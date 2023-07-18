@@ -1,7 +1,7 @@
 addrs:
   - addr: 0.0.0.0:4843
-#    key: xxx
-#    cert: xxx
+    cert: examples/server.crt
+    key: examples/server.key
 admin:
   addr: 127.0.0.1:4890
 trojan:

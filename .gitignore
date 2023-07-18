@@ -3,5 +3,3 @@
 .idea
 .DS_Store
 logs
-*.key
-*.crt

@@ -29,10 +29,10 @@ Connect to networks without pain
 #example/shuttles.yaml
 addrs:
   - addr: 0.0.0.0:4843
-#    key: xxx  最好使用正式域名证书的方式,或者使用自签名证书
-#    cert: xxx
+    cert: examples/server.crt # 最好使用正式域名证书的方式
+    key: examples/server.key
 trojan:
-  local_addr: 127.0.0.1:80 #nginx
+  local_addr: 127.0.0.1:80 #nginx伪装
   passwords:
     - sQtfRnfhcNoZYZh1wY9u
 ```
@@ -46,9 +46,9 @@ trojan:
 ```yaml
 run_type: proxy #运行类型 代理模式
 ssl_enable: true
-invalid_certs: false
+invalid_certs: true
 proxy_addr: 127.0.0.1:4080 #本地代理地址
-remote_addr: 127.0.0.1:4843 #服务器地址
+remote_addr: 127.0.0.1:4843 #服务器地址, 最好是域名
 password: sQtfRnfhcNoZYZh1wY9u #对应服务器密码
 ```
 
@@ -70,8 +70,8 @@ Enjoy
 #example/shuttles.yaml
 addrs:
   - addr: 0.0.0.0:4843
-#    key: xxx
-#    cert: xxx
+    cert: examples/server.crt
+    key: examples/server.key
 rathole:
   passwords:
     - 58JCEmvcBkRAk1XkK1iH
