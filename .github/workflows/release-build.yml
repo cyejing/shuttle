@@ -72,10 +72,8 @@ jobs:
           override: true
           profile: minimal
           target: ${{ matrix.target }}
-          
-      - name: Clean | Clean
-        run: cargo clean
-        
+      - name: Setup | Rustup
+        run: rustup target add ${{ matrix.target }}
       - name: Build | Build
         uses: actions-rs/cargo@v1
         with:
