@@ -51,6 +51,9 @@ jobs:
           - os: windows-latest
             target: i686-pc-windows-msvc
             name: shuttle-i686-pc-windows-msvc.zip
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            name: shuttle-x86_64-pc-windows-gnu.zip
     permissions:
       contents: write
     runs-on: ${{ matrix.os }}
