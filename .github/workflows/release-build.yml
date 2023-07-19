@@ -40,7 +40,13 @@ jobs:
           - os: ubuntu-latest
             target: i686-unknown-linux-musl
             name: shuttle-i686-unknown-linux-musl.tgz
-
+          - os: ubuntu-latest
+            target: arm-unknown-linux-musleabi
+            name: shuttle-arm-unknown-linux-musleabi.tgz
+          - os: ubuntu-latest
+            target: mips-unknown-linux-musl
+            name: shuttle-mips-unknown-linux-musl.tgz
+        
           - os: macOS-latest
             target: x86_64-apple-darwin
             name: shuttle-x86_64-apple-darwin.tgz
@@ -51,9 +57,6 @@ jobs:
           - os: windows-latest
             target: i686-pc-windows-msvc
             name: shuttle-i686-pc-windows-msvc.zip
-          - os: windows-latest
-            target: x86_64-pc-windows-gnu
-            name: shuttle-x86_64-pc-windows-gnu.zip
     permissions:
       contents: write
     runs-on: ${{ matrix.os }}
