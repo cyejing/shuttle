@@ -20,7 +20,7 @@ pub fn make_tls_acceptor(certs: Vec<Certificate>, key: PrivateKey) -> tokio_rust
 
 pub fn make_tls_connector(invalid_certs: bool) -> tokio_rustls::TlsConnector {
     let mut root_cert_store = rustls::RootCertStore::empty();
-    root_cert_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+    root_cert_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
         OwnedTrustAnchor::from_subject_spki_name_constraints(
             ta.subject,
             ta.spki,
