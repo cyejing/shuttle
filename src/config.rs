@@ -161,7 +161,7 @@ impl Trojan {
 
     pub fn push(&mut self, pwd: &str) {
         self.passwords.push(pwd.to_string());
-        self.password_hash.insert(pwd.to_string(), sha224(pwd));
+        self.password_hash.insert(sha224(pwd), pwd.to_string());
     }
 }
 impl RatHole {
@@ -174,7 +174,7 @@ impl RatHole {
 
     pub fn push(&mut self, pwd: &str) {
         self.passwords.push(pwd.to_string());
-        self.password_hash.insert(pwd.to_string(), sha224(pwd));
+        self.password_hash.insert(sha224(pwd), pwd.to_string());
     }
 }
 

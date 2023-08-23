@@ -140,7 +140,7 @@ impl ServerHandler {
         stream: T,
     ) -> anyhow::Result<ConnType> {
         let head = self.read_head(stream).await.context("Can't read head")?;
-        trace!("Detect head {}", String::from_utf8_lossy(head.as_slice()));
+        debug!("Detect head {}", String::from_utf8_lossy(head.as_slice()));
         if head.len() < 56 {
             return Ok(ConnType::Proxy(head));
         }
