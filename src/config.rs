@@ -150,7 +150,7 @@ fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {
     }
 }
 
-fn sha224(password: &str) -> String {
+pub fn sha224(password: &str) -> String {
     let mut hasher = Sha224::new();
     hasher.update(password.as_bytes());
     let hash = hasher.finalize();
