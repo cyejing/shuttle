@@ -150,6 +150,34 @@ fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {
     }
 }
 
+impl Trojan {
+    pub fn new() -> Self {
+        Trojan {
+            local_addr: String::default(),
+            passwords: Vec::new(),
+            password_hash: HashMap::new(),
+        }
+    }
+
+    pub fn push(&mut self, pwd: &str) {
+        self.passwords.push(pwd.to_string());
+        self.password_hash.insert(pwd.to_string(), sha224(pwd));
+    }
+}
+impl RatHole {
+    pub fn new() -> Self {
+        RatHole {
+            passwords: Vec::new(),
+            password_hash: HashMap::new(),
+        }
+    }
+
+    pub fn push(&mut self, pwd: &str) {
+        self.passwords.push(pwd.to_string());
+        self.password_hash.insert(pwd.to_string(), sha224(pwd));
+    }
+}
+
 pub fn sha224(password: &str) -> String {
     let mut hasher = Sha224::new();
     hasher.update(password.as_bytes());

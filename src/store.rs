@@ -15,6 +15,14 @@ pub struct ServerStore {
 }
 
 impl ServerStore {
+    pub fn new(trojan: Trojan, rathole: RatHole) -> Self {
+        ServerStore {
+            cmd_map: Arc::new(RwLock::new(HashMap::new())),
+            trojan: Arc::new(trojan),
+            rathole: Arc::new(rathole),
+        }
+    }
+
     pub(crate) async fn set_cmd_sender(&self, sender: Arc<CommandSender>) {
         self.cmd_map
             .write()
