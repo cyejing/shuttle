@@ -55,7 +55,7 @@ pub struct RatHole {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Trojan {
-    pub local_addr: String,
+    pub local_addr: Option<String>,
     pub passwords: Vec<String>,
     #[serde(skip)]
     pub password_hash: HashMap<String, String>,
@@ -151,27 +151,12 @@ fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {
 }
 
 impl Trojan {
-    pub fn new() -> Self {
-        Trojan {
-            local_addr: String::default(),
-            passwords: Vec::new(),
-            password_hash: HashMap::new(),
-        }
-    }
-
     pub fn push(&mut self, pwd: &str) {
         self.passwords.push(pwd.to_string());
         self.password_hash.insert(sha224(pwd), pwd.to_string());
     }
 }
 impl RatHole {
-    pub fn new() -> Self {
-        RatHole {
-            passwords: Vec::new(),
-            password_hash: HashMap::new(),
-        }
-    }
-
     pub fn push(&mut self, pwd: &str) {
         self.passwords.push(pwd.to_string());
         self.password_hash.insert(sha224(pwd), pwd.to_string());

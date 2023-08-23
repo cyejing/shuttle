@@ -217,21 +217,31 @@ impl ServerHandler {
         stream: &mut T,
         head: Vec<u8>,
     ) -> anyhow::Result<()> {
-        info!("{:?} requested proxy local", self.peer_addr);
         let trojan = self.store.trojan.clone();
-        let mut ls = TcpStream::connect(&trojan.local_addr)
-            .await
-            .context(format!("Proxy can't connect addr {}", &trojan.local_addr))?;
-        debug!("Proxy connect success {:?}", &trojan.local_addr);
 
-        ls.write_all(head.as_slice())
-            .await
-            .context("Proxy can't write prefetch head")?;
+        match trojan.local_addr {
+            Some(ref local_addr) => {
+                info!("requested proxy local {}", local_addr);
+                let mut ls = TcpStream::connect(local_addr)
+                    .await
+                    .context(format!("Proxy can't connect addr {}", local_addr))?;
+                debug!("Proxy connect success {:?}", &trojan.local_addr);
 
-        tokio::select! {
-            _ = tokio::io::copy_bidirectional(stream, &mut ls) => debug!("Trojan io copy end"),
-            _ = self.shutdown.recv() => debug!("recv shutdown signal"),
+                ls.write_all(head.as_slice())
+                    .await
+                    .context("Proxy can't write prefetch head")?;
+
+                tokio::select! {
+                    _ = tokio::io::copy_bidirectional(stream, &mut ls) => debug!("Trojan io copy end"),
+                    _ = self.shutdown.recv() => debug!("recv shutdown signal"),
+                }
+            }
+            None => {
+                info!("response not found");
+                resp_html(stream).await
+            }
         }
+
         Ok(())
     }
 
@@ -260,4 +270,16 @@ pub enum ConnType {
     Trojan,
     Rathole,
     Proxy(Vec<u8>),
+}
+
+async fn resp_html<T: AsyncRead + AsyncWrite + Unpin>(stream: &mut T) {
+    stream
+        .write_all(
+            &b"HTTP/1.0 404 Not Found\r\n\
+                Content-Type: text/plain; charset=utf-8\r\n\
+                Content-length: 13\r\n\r\n\
+                404 Not Found"[..],
+        )
+        .await
+        .unwrap();
 }

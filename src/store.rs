@@ -50,7 +50,7 @@ impl Default for ServerStore {
         ServerStore {
             cmd_map: Arc::new(RwLock::new(HashMap::new())),
             trojan: Arc::new(Trojan {
-                local_addr: "".to_string(),
+                local_addr: None,
                 passwords: Vec::new(),
                 password_hash: HashMap::new(),
             }),
