@@ -223,6 +223,7 @@ pub enum DialStream {
 pub enum Dial {
     Direct,
     Trojan(String, String, bool, bool),
+    HTrojan(String, String, bool, bool),
 }
 
 impl Dial {
@@ -284,6 +285,53 @@ impl Dial {
                     }
                 }
             }
+            Dial::HTrojan(remote_addr, hash, ssl_enable, invalid_certs) => {
+                match TcpStream::connect(remote_addr)
+                    .await
+                    .context(format!("HTrojan can't connect remote {}", remote_addr))
+                {
+                    Err(e) => {
+                        error!("Can't connect HTrojan  server {}, {:?}", remote_addr, e);
+                        Err(anyhow!(e))
+                    }
+                    Ok(mut tts) => {
+                        debug!("Dial mode HTrojan  success {}", remote_addr);
+                        let buf = format!(
+                            "GET / HTTP/1.1\r\nConnection: upgrade\r\nProxy-Connection: Keep-Alive\r\nX-Shuttle: {}\r\nX-Remote: {}\r\n\r\n",
+                            hash,
+                            remote_addr.to_string()
+                        );
+                        debug!("Send req: {}", buf);
+
+                        if *ssl_enable {
+                            let server_name = make_server_name(remote_addr.as_str())?;
+                            let mut ssl_tts = make_tls_connector(*invalid_certs)
+                                .connect(server_name, tts)
+                                .await
+                                .context("HTrojan  can't connect tls")?;
+                            ssl_tts
+                                .write_all(buf.as_bytes())
+                                .await
+                                .context("Can't write HTrojan ")?;
+
+                            let mut rbuf = [0; 13];
+                            ssl_tts.read_exact(&mut rbuf).await?;
+                            debug!("HTrojan resp: {}", String::from_utf8_lossy(&rbuf[..]));
+
+                            Ok(TLS(Box::new(ssl_tts)))
+                        } else {
+                            tts.write_all(buf.as_bytes())
+                                .await
+                                .context("Can't write HTrojan ")?;
+
+                            // let mut rbuf = Vec::new();
+                            // tts.read(&mut rbuf).await?;
+                            // debug!("HTrojan resp: {}", String::from_utf8_lossy(&rbuf[..]));
+                            Ok(TCP(Box::new(tts)))
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -320,6 +368,19 @@ impl Display for ByteAddr {
 }
 
 impl ByteAddr {
+    pub fn to_host_string(&self) -> String {
+        match self {
+            ByteAddr::V4(_cmd, _atyp, ip, port) => {
+                format!("{:?}:{}", ip, port)
+            }
+            ByteAddr::V6(_cmd, _atyp, ip, port) => {
+                format!("{:?}:{}", ip, port)
+            }
+            ByteAddr::Domain(_cmd, _atyp, domain, port) => {
+                format!("{}:{}", String::from_utf8_lossy(domain), port)
+            }
+        }
+    }
     pub(crate) async fn to_socket_addr(&self) -> anyhow::Result<SocketAddr> {
         match self {
             ByteAddr::V4(_, _, ip, port) => {
@@ -539,14 +600,21 @@ pub mod socks_consts {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use std::{
+        io::{Cursor, Read, Write},
+        net::TcpStream,
+    };
 
     use crate::proxy::ByteAddr;
 
     #[test]
-    fn test_from_str() {
+    fn test_host_str() {
         let ba = ByteAddr::from("baidu.com:443").unwrap();
-        println!("ba : {}", ba);
+        println!("host: {}", ba.to_host_string());
+        assert_eq!("baidu.com:443", ba.to_host_string());
+        let ba1 = ByteAddr::from("1.2.5.2:222").unwrap();
+        println!("host: {}", ba1.to_host_string());
+        assert_eq!("1.2.5.2:222", ba1.to_host_string())
     }
 
     #[test]
@@ -571,5 +639,15 @@ mod tests {
         let mut buf = Cursor::new(vec);
         let addr = ByteAddr::read_addr(&mut buf, 0x01, 0x01).await.unwrap();
         assert_eq!(addr, ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], 80))
+    }
+
+    #[test]
+    fn test_sssss() {
+        let mut ts = TcpStream::connect("127.0.0.1:4843").unwrap();
+        let req = "GET / HTTP/1.1\r\nX-Shuttle: aaa\r\nX-Remote: 123\r\n\r\n";
+        ts.write_all(req.as_bytes()).unwrap();
+        let mut resp = String::new();
+        ts.read_to_string(&mut resp).unwrap();
+        println!("{resp}")
     }
 }

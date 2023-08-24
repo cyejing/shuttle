@@ -38,6 +38,15 @@ pub async fn start_proxy(cc: ClientConfig, mode: String) {
             let dial = proxy::Dial::Direct;
             proxy::start_proxy(&cc.proxy_addr, dial).await;
         }
+        "htrojan" => {
+            let dial = proxy::Dial::HTrojan(
+                cc.remote_addr.clone(),
+                cc.hash.clone(),
+                cc.ssl_enable,
+                cc.invalid_certs,
+            );
+            proxy::start_proxy(&cc.proxy_addr, dial).await;
+        }
         _ => panic!("unknown socks mode"),
     }
 }
