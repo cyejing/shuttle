@@ -600,10 +600,7 @@ pub mod socks_consts {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        io::{Cursor, Read, Write},
-        net::TcpStream,
-    };
+    use std::io::Cursor;
 
     use crate::proxy::ByteAddr;
 
@@ -639,15 +636,5 @@ mod tests {
         let mut buf = Cursor::new(vec);
         let addr = ByteAddr::read_addr(&mut buf, 0x01, 0x01).await.unwrap();
         assert_eq!(addr, ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], 80))
-    }
-
-    #[test]
-    fn test_sssss() {
-        let mut ts = TcpStream::connect("127.0.0.1:4843").unwrap();
-        let req = "GET / HTTP/1.1\r\nX-Shuttle: aaa\r\nX-Remote: 123\r\n\r\n";
-        ts.write_all(req.as_bytes()).unwrap();
-        let mut resp = String::new();
-        ts.read_to_string(&mut resp).unwrap();
-        println!("{resp}")
     }
 }
