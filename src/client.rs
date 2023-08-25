@@ -38,8 +38,8 @@ pub async fn start_proxy(cc: ClientConfig, mode: String) {
             let dial = proxy::Dial::Direct;
             proxy::start_proxy(&cc.proxy_addr, dial).await;
         }
-        "htrojan" => {
-            let dial = proxy::Dial::HTrojan(
+        "websocket" => {
+            let dial = proxy::Dial::WebSocket(
                 cc.remote_addr.clone(),
                 cc.hash.clone(),
                 cc.ssl_enable,

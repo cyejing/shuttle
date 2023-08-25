@@ -223,7 +223,7 @@ pub enum DialStream {
 pub enum Dial {
     Direct,
     Trojan(String, String, bool, bool),
-    HTrojan(String, String, bool, bool),
+    WebSocket(String, String, bool, bool),
 }
 
 impl Dial {
@@ -285,48 +285,26 @@ impl Dial {
                     }
                 }
             }
-            Dial::HTrojan(remote_addr, hash, ssl_enable, invalid_certs) => {
+            Dial::WebSocket(remote_addr, _hash, ssl_enable, invalid_certs) => {
                 match TcpStream::connect(remote_addr)
                     .await
-                    .context(format!("HTrojan can't connect remote {}", remote_addr))
+                    .context(format!("HttpBT can't connect remote {}", remote_addr))
                 {
                     Err(e) => {
-                        error!("Can't connect HTrojan  server {}, {:?}", remote_addr, e);
+                        error!("Can't connect HttpBT  server {}, {:?}", remote_addr, e);
                         Err(anyhow!(e))
                     }
-                    Ok(mut tts) => {
-                        debug!("Dial mode HTrojan  success {}", remote_addr);
-                        let buf = format!(
-                            "GET / HTTP/1.1\r\nConnection: upgrade\r\nProxy-Connection: Keep-Alive\r\nX-Shuttle: {}\r\nX-Remote: {}\r\n\r\n",
-                            hash,
-                            remote_addr.to_string()
-                        );
-                        debug!("Send req: {}", buf);
-
+                    Ok(tts) => {
+                        debug!("Dial mode HttpBT  success {}", remote_addr);
                         if *ssl_enable {
                             let server_name = make_server_name(remote_addr.as_str())?;
-                            let mut ssl_tts = make_tls_connector(*invalid_certs)
+                            let ssl_tts = make_tls_connector(*invalid_certs)
                                 .connect(server_name, tts)
                                 .await
-                                .context("HTrojan  can't connect tls")?;
-                            ssl_tts
-                                .write_all(buf.as_bytes())
-                                .await
-                                .context("Can't write HTrojan ")?;
-
-                            let mut rbuf = [0; 13];
-                            ssl_tts.read_exact(&mut rbuf).await?;
-                            debug!("HTrojan resp: {}", String::from_utf8_lossy(&rbuf[..]));
+                                .context("HttpBT  can't connect tls")?;
 
                             Ok(TLS(Box::new(ssl_tts)))
                         } else {
-                            tts.write_all(buf.as_bytes())
-                                .await
-                                .context("Can't write HTrojan ")?;
-
-                            // let mut rbuf = Vec::new();
-                            // tts.read(&mut rbuf).await?;
-                            // debug!("HTrojan resp: {}", String::from_utf8_lossy(&rbuf[..]));
                             Ok(TCP(Box::new(tts)))
                         }
                     }
@@ -600,10 +578,7 @@ pub mod socks_consts {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        io::{Cursor, Read, Write},
-        net::TcpStream,
-    };
+    use std::io::Cursor;
 
     use crate::proxy::ByteAddr;
 
@@ -639,15 +614,5 @@ mod tests {
         let mut buf = Cursor::new(vec);
         let addr = ByteAddr::read_addr(&mut buf, 0x01, 0x01).await.unwrap();
         assert_eq!(addr, ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], 80))
-    }
-
-    #[test]
-    fn test_sssss() {
-        let mut ts = TcpStream::connect("127.0.0.1:4843").unwrap();
-        let req = "GET / HTTP/1.1\r\nX-Shuttle: aaa\r\nX-Remote: 123\r\n\r\n";
-        ts.write_all(req.as_bytes()).unwrap();
-        let mut resp = String::new();
-        ts.read_to_string(&mut resp).unwrap();
-        println!("{resp}")
     }
 }
