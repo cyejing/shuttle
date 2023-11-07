@@ -1,13 +1,18 @@
 use std::fmt::{Display, Formatter};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::task::Poll;
 
 use anyhow::{anyhow, Context};
+use futures::io::Cursor;
+use futures::StreamExt;
 use itertools::Itertools;
-use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
-use crate::proxy::DialStream::{TCP, TLS};
+use crate::proxy::DialStream::{TCP, TLS, WS};
 use crate::tls::{make_server_name, make_tls_connector};
 use crate::{read_exact, CRLF};
 
@@ -102,6 +107,9 @@ impl HttpStream {
                 debug!("Start copy stream {}", &addr);
                 copy_bidirectional(&mut rts, &mut ts).await.ok();
             }
+            WS(_) => {
+                info!("ws handle")
+            }
         };
         Ok(())
     }
@@ -143,6 +151,11 @@ impl SocksStream {
                     self.ts.peer_addr()
                 );
                 copy_bidirectional(&mut rts, &mut self.ts).await.ok();
+            }
+            WS(mut ws) => {
+                info!("ws handle");
+                let mut a = ws.get_mut();
+                copy_bidirectional(&mut a, &mut self.ts).await.ok();
             }
         };
 
@@ -217,6 +230,7 @@ impl SocksStream {
 pub enum DialStream {
     TCP(Box<TcpStream>),
     TLS(Box<TlsStream<TcpStream>>),
+    WS(Box<WebSocketStream<MaybeTlsStream<TcpStream>>>),
 }
 
 #[derive(Clone, Debug)]
@@ -240,7 +254,7 @@ impl Dial {
                 {
                     Ok(tts) => {
                         debug!("Dail mode direct success {}", addr_str);
-                        Ok(DialStream::TCP(Box::new(tts)))
+                        Ok(TCP(Box::new(tts)))
                     }
                     Err(e) => {
                         error!("Can't connect socket server {}, {:?}", addr_str, e);
@@ -285,30 +299,35 @@ impl Dial {
                     }
                 }
             }
-            Dial::WebSocket(remote_addr, _hash, ssl_enable, invalid_certs) => {
-                match TcpStream::connect(remote_addr)
+            Dial::WebSocket(_remote_addr, _hash, _ssl_enable, _invalid_certs) => {
+                let (ws, _) = connect_async("ws://localhost:8000/websocket")
                     .await
-                    .context(format!("HttpBT can't connect remote {}", remote_addr))
-                {
-                    Err(e) => {
-                        error!("Can't connect HttpBT  server {}, {:?}", remote_addr, e);
-                        Err(anyhow!(e))
-                    }
-                    Ok(tts) => {
-                        debug!("Dial mode HttpBT  success {}", remote_addr);
-                        if *ssl_enable {
-                            let server_name = make_server_name(remote_addr.as_str())?;
-                            let ssl_tts = make_tls_connector(*invalid_certs)
-                                .connect(server_name, tts)
-                                .await
-                                .context("HttpBT  can't connect tls")?;
+                    .expect("WebSocket can't connect remote");
+                Ok(WS(Box::new(ws)))
 
-                            Ok(TLS(Box::new(ssl_tts)))
-                        } else {
-                            Ok(TCP(Box::new(tts)))
-                        }
-                    }
-                }
+                //     match TcpStream::connect(remote_addr)
+                //         .await
+                //         .context(format!("WebSocket can't connect remote {}", remote_addr))
+                //     {
+                //         Err(e) => {
+                //             error!("Can't connect  WebSocket server {}, {:?}", remote_addr, e);
+                //             Err(anyhow!(e))
+                //         }
+                //         Ok(tts) => {
+                //             debug!("Dial mode WebSocket success {}", remote_addr);
+                //             if *ssl_enable {
+                //                 let server_name = make_server_name(remote_addr.as_str())?;
+                //                 let ssl_tts = make_tls_connector(*invalid_certs)
+                //                     .connect(server_name, tts)
+                //                     .await
+                //                     .context("WebSocket can't connect tls")?;
+
+                //                 Ok(TLS(Box::new(ssl_tts)))
+                //             } else {
+                //                 Ok(TCP(Box::new(tts)))
+                //             }
+                //         }
+                //     }
             }
         }
     }
@@ -614,5 +633,49 @@ mod tests {
         let mut buf = Cursor::new(vec);
         let addr = ByteAddr::read_addr(&mut buf, 0x01, 0x01).await.unwrap();
         assert_eq!(addr, ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], 80))
+    }
+
+    #[tokio::test]
+    async fn test_websocket_addr() {
+        use futures::StreamExt;
+        use tokio_tungstenite::connect_async;
+
+        let url = "ws://localhost:8000/websocket";
+        let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+        let (_write, mut read) = ws_stream.split();
+        let msg = read.next().await;
+        println!("{msg:?}");
+    }
+}
+
+struct WebSocketTrojanStream<T> {
+    inner: WebSocketStream<T>,
+}
+
+impl<T> AsyncRead for WebSocketTrojanStream<T>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+{
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let me = self.get_mut();
+        let next = me.inner.poll_next_unpin(cx);
+        match next {
+            Poll::Ready(t) => {
+                if let Some(Ok(m)) = t {
+                    match m {
+                        Message::Binary(b)=>{
+                            Poll::Ready(Ok(()))
+                        }
+                        
+                    }
+                }
+                todo!()
+            }
+            Poll::Pending => Poll::Pending,
+        }
     }
 }
