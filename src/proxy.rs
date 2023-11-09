@@ -107,8 +107,15 @@ impl HttpStream {
                 debug!("Start copy stream {}", &addr);
                 copy_bidirectional(&mut rts, &mut ts).await.ok();
             }
-            WS(_) => {
-                info!("ws handle")
+            WS(mut ws) => {
+                if http.connect {
+                    ts.write_all("HTTP/1.1 200 OK\r\n\r\n".as_bytes()).await?;
+                } else {
+                    ws.write_all(http.buf.as_slice()).await?;
+                }
+                debug!("Start copy stream {}", &addr);
+
+                copy_bidirectional(&mut ws, &mut ts).await.ok();
             }
         };
         Ok(())
