@@ -16,7 +16,7 @@ pub struct ServerConfig {
     pub admin: Option<Admin>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientConfig {
     pub run_type: String,
     pub remote_addr: String,
@@ -33,7 +33,7 @@ pub struct ClientConfig {
     pub holes: Vec<Hole>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Addr {
     pub addr: String,
     pub cert: Option<String>,
@@ -46,16 +46,16 @@ pub struct Addr {
     pub key_loaded: Vec<rustls::PrivateKey>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RatHole {
     pub passwords: Vec<String>,
     #[serde(skip)]
     pub password_hash: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Trojan {
-    pub local_addr: String,
+    pub local_addr: Option<String>,
     pub passwords: Vec<String>,
     #[serde(skip)]
     pub password_hash: HashMap<String, String>,
@@ -150,6 +150,19 @@ fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {
     }
 }
 
+impl Trojan {
+    pub fn push(&mut self, pwd: &str) {
+        self.passwords.push(pwd.to_string());
+        self.password_hash.insert(sha224(pwd), pwd.to_string());
+    }
+}
+impl RatHole {
+    pub fn push(&mut self, pwd: &str) {
+        self.passwords.push(pwd.to_string());
+        self.password_hash.insert(sha224(pwd), pwd.to_string());
+    }
+}
+
 pub fn sha224(password: &str) -> String {
     let mut hasher = Sha224::new();
     hasher.update(password.as_bytes());
@@ -219,11 +232,13 @@ mod tests {
 
     #[test]
     fn test_hash() {
-        let hash = sha224("sQtfRnfhcNoZYZh1wY9u");
         assert_eq!(
+            sha224("sQtfRnfhcNoZYZh1wY9u"),
             "6b34e62f6df92b8e9db961410b4f1a6fca1e2dae73f9c1b4b94f4a33",
-            hash
         );
-        println!("{}", hash)
+        assert_eq!(
+            sha224("cyj22334400!"),
+            "3af1c305cd8ec7eebaf03bab42e42dd686e2ef5db27a7c7176350eb0"
+        );
     }
 }

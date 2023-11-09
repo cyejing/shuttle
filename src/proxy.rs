@@ -1,13 +1,18 @@
-use std::fmt::{Display, Formatter};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::io::{self, ErrorKind};
+use std::pin::Pin;
+use std::task::Poll;
 
 use anyhow::{anyhow, Context};
+use futures::{Sink, SinkExt, StreamExt};
 use itertools::Itertools;
-use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWriteExt};
-use tokio::net::{lookup_host, TcpListener, TcpStream};
+use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
-use crate::proxy::DialStream::{TCP, TLS};
+use crate::byteaddr::ByteAddr;
+use crate::proxy::DialStream::{TCP, TLS, WS};
 use crate::tls::{make_server_name, make_tls_connector};
 use crate::{read_exact, CRLF};
 
@@ -102,6 +107,9 @@ impl HttpStream {
                 debug!("Start copy stream {}", &addr);
                 copy_bidirectional(&mut rts, &mut ts).await.ok();
             }
+            WS(_) => {
+                info!("ws handle")
+            }
         };
         Ok(())
     }
@@ -127,7 +135,7 @@ impl SocksStream {
                     .await
                     .context("Socks send succeeded reply")?;
                 debug!(
-                    "Start io copy {:?} <=> {:?}",
+                    "Start tcp io copy {:?} <=> {:?}",
                     rts.peer_addr(),
                     self.ts.peer_addr()
                 );
@@ -138,11 +146,19 @@ impl SocksStream {
                     .await
                     .context("Socks send succeeded reply")?;
                 debug!(
-                    "Start io copy {:?} <=> {:?}",
+                    "Start tls io copy {:?} <=> {:?}",
                     rts.get_ref().0.peer_addr(),
                     self.ts.peer_addr()
                 );
                 copy_bidirectional(&mut rts, &mut self.ts).await.ok();
+            }
+            WS(mut ws) => {
+                self.reply(socks_consts::SOCKS5_REPLY_SUCCEEDED)
+                    .await
+                    .context("Socks send succeeded reply")?;
+                debug!("Start websocket io copy");
+
+                copy_bidirectional(&mut ws, &mut self.ts).await.ok();
             }
         };
 
@@ -213,16 +229,19 @@ impl SocksStream {
         Ok(())
     }
 }
+pub type WSStream = WebSocketTrojanStream<MaybeTlsStream<TcpStream>>;
 
 pub enum DialStream {
     TCP(Box<TcpStream>),
     TLS(Box<TlsStream<TcpStream>>),
+    WS(Box<WSStream>),
 }
 
 #[derive(Clone, Debug)]
 pub enum Dial {
     Direct,
     Trojan(String, String, bool, bool),
+    WebSocket(String, String, bool, bool),
 }
 
 impl Dial {
@@ -239,7 +258,7 @@ impl Dial {
                 {
                     Ok(tts) => {
                         debug!("Dail mode direct success {}", addr_str);
-                        Ok(DialStream::TCP(Box::new(tts)))
+                        Ok(TCP(Box::new(tts)))
                     }
                     Err(e) => {
                         error!("Can't connect socket server {}, {:?}", addr_str, e);
@@ -284,146 +303,31 @@ impl Dial {
                     }
                 }
             }
-        }
-    }
-}
-
-// ByteAddr Definition
-#[derive(Debug, PartialEq, Eq)]
-pub enum ByteAddr {
-    V4(u8, u8, [u8; 4], u16),
-    V6(u8, u8, [u8; 16], u16),
-    Domain(u8, u8, Vec<u8>, u16), // Vec<[u8]> or Box<[u8]> or String ?
-}
-
-impl Display for ByteAddr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ByteAddr::V4(cmd, atyp, ip, port) => {
-                write!(f, "[{},{}]:{:?}:{}", cmd, atyp, ip, port)
-            }
-            ByteAddr::V6(cmd, atyp, ip, port) => {
-                write!(f, "[{},{}]:{:?}:{}", cmd, atyp, ip, port)
-            }
-            ByteAddr::Domain(cmd, atyp, domain, port) => {
-                write!(
-                    f,
-                    "[{},{}]:{}:{}",
-                    cmd,
-                    atyp,
-                    String::from_utf8_lossy(domain),
-                    port
-                )
-            }
-        }
-    }
-}
-
-impl ByteAddr {
-    pub(crate) async fn to_socket_addr(&self) -> anyhow::Result<SocketAddr> {
-        match self {
-            ByteAddr::V4(_, _, ip, port) => {
-                let sa = SocketAddr::V4(SocketAddrV4::new(
-                    Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]),
-                    *port,
-                ));
-                Ok(sa)
-            }
-            ByteAddr::V6(_, _, ip, port) => {
-                let sa = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::from(*ip), *port, 0, 0));
-                Ok(sa)
-            }
-            ByteAddr::Domain(_, _, domain, port) => {
-                let domain_str = String::from_utf8_lossy(domain);
-                let sa = lookup_host((&domain_str[..], *port))
+            Dial::WebSocket(remote_addr, hash, _ssl_enable, _invalid_certs) => {
+                match connect_async(remote_addr)
                     .await
-                    .context("Can't lookup host")?
-                    .next()
-                    .ok_or_else(|| anyhow!("Can't fetch DNS to the domain."))
-                    .unwrap();
-                Ok(sa)
+                    .context(format!("WebSocket can't connect remote {}", remote_addr))
+                {
+                    Err(e) => {
+                        error!("Can't connect trojan server {}, {:?}", remote_addr, e);
+                        Err(anyhow!(e))
+                    }
+                    Ok((mut ws, _)) => {
+                        let mut buf: Vec<u8> = vec![];
+                        buf.extend_from_slice(hash.as_bytes());
+                        buf.extend_from_slice(&CRLF);
+                        buf.extend_from_slice(ba.as_bytes().as_slice());
+                        buf.extend_from_slice(&CRLF);
+
+                        ws.send(Message::Binary(buf))
+                            .await
+                            .context("WebSocket can't send")?;
+
+                        Ok(WS(Box::new(WebSocketTrojanStream::new(ws))))
+                    }
+                }
             }
         }
-    }
-
-    pub(crate) fn as_bytes(&self) -> Vec<u8> {
-        match self {
-            ByteAddr::V4(cmd, atyp, ip, port) => {
-                let mut buf = vec![*cmd, *atyp];
-                buf.extend_from_slice(ip);
-                buf.extend_from_slice(&port.to_be_bytes());
-                debug!("byte addr as bytes:{:?}", buf);
-                buf
-            }
-            ByteAddr::V6(cmd, atyp, ip, port) => {
-                let mut buf = vec![*cmd, *atyp];
-                buf.extend_from_slice(ip);
-                buf.extend_from_slice(&port.to_be_bytes());
-                debug!("byte addr as bytes:{:?}", buf);
-                buf
-            }
-            ByteAddr::Domain(cmd, atyp, domain, port) => {
-                let mut buf = vec![*cmd, *atyp];
-                buf.push(domain.len() as u8);
-                buf.extend_from_slice(domain.as_slice());
-                buf.extend_from_slice(&port.to_be_bytes());
-                debug!(
-                    "byte addr as bytes:{:?} , domain:{}",
-                    buf,
-                    String::from_utf8_lossy(domain)
-                );
-                buf
-            }
-        }
-    }
-
-    pub async fn read_addr<T>(stream: &mut T, cmd: u8, atyp: u8) -> anyhow::Result<ByteAddr>
-    where
-        T: AsyncRead + Unpin,
-    {
-        let addr = match atyp {
-            socks_consts::SOCKS5_ADDR_TYPE_IPV4 => {
-                let ip = read_exact!(stream, [0u8; 4])?;
-                let port = read_exact!(stream, [0u8; 2])?;
-                let port = (port[0] as u16) << 8 | port[1] as u16;
-                ByteAddr::V4(cmd, atyp, ip, port)
-            }
-            socks_consts::SOCKS5_ADDR_TYPE_IPV6 => {
-                let ip = read_exact!(stream, [0u8; 16])?;
-                let port = read_exact!(stream, [0u8; 2])?;
-                let port = (port[0] as u16) << 8 | port[1] as u16;
-                ByteAddr::V6(cmd, atyp, ip, port)
-            }
-            socks_consts::SOCKS5_ADDR_TYPE_DOMAIN_NAME => {
-                let len = read_exact!(stream, [0])?[0];
-                let domain = read_exact!(stream, vec![0u8; len as usize])?;
-                let port = read_exact!(stream, [0u8; 2])?;
-                let port = (port[0] as u16) << 8 | port[1] as u16;
-
-                ByteAddr::Domain(cmd, atyp, domain, port)
-            }
-            _ => return Err(anyhow!("unknown address type")),
-        };
-
-        Ok(addr)
-    }
-
-    pub fn from(host: &str) -> anyhow::Result<Self> {
-        debug!("ByteAddr from host :{}", host);
-        let (domain, port) = host
-            .split(':')
-            .collect_tuple()
-            .context("ByteAddr parse host err")
-            .unwrap();
-        let port =
-            atoi::atoi::<u16>(port.as_bytes()).ok_or_else(|| anyhow!("ByteAddr parse port err"))?;
-
-        Ok(ByteAddr::Domain(
-            0x01,
-            0x03,
-            domain.as_bytes().to_vec(),
-            port,
-        ))
     }
 }
 
@@ -509,6 +413,90 @@ impl Http {
     }
 }
 
+pub struct WebSocketTrojanStream<T> {
+    inner: WebSocketStream<T>,
+}
+
+impl<T> WebSocketTrojanStream<T> {
+    fn new(inner: WebSocketStream<T>) -> Self {
+        Self { inner }
+    }
+}
+
+impl<T> AsyncRead for WebSocketTrojanStream<T>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+{
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let me = self.get_mut();
+        let next = me.inner.poll_next_unpin(cx);
+        match next {
+            Poll::Ready(t) => match t {
+                Some(Ok(Message::Binary(b))) => {
+                    buf.put_slice(b.as_slice());
+                    Poll::Ready(Ok(()))
+                }
+                Some(Ok(Message::Close(_))) => {
+                    info!("websocket close message");
+                    Poll::Ready(Err(io::Error::from(ErrorKind::Other)))
+                }
+                Some(Ok(_)) => Poll::Ready(Ok(())),
+                Some(Err(_e)) => Poll::Ready(Err(io::Error::from(ErrorKind::Other))),
+                None => Poll::Ready(Err(io::Error::from(ErrorKind::Other))),
+            },
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+impl<T> AsyncWrite for WebSocketTrojanStream<T>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+{
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, std::io::Error>> {
+        let me = self.get_mut();
+        let binary = Vec::from(buf);
+        let len = binary.len();
+        me.inner.start_send_unpin(Message::Binary(binary)).ok();
+
+        Poll::Ready(Ok(len))
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
+        let me = self.get_mut();
+        let stream = &mut me.inner;
+        match Pin::new(stream).poll_flush(cx) {
+            Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
+            Poll::Ready(Err(_)) => Poll::Ready(Err(io::Error::from(ErrorKind::Other))),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
+        let me = self.get_mut();
+        let stream = &mut me.inner;
+        match Pin::new(stream).poll_close(cx) {
+            Poll::Ready(Ok(_)) => Poll::Ready(Ok(())),
+            Poll::Ready(Err(_)) => Poll::Ready(Err(io::Error::from(ErrorKind::Other))),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
 #[rustfmt::skip]
 pub mod socks_consts {
     pub const SOCKS5_VERSION:                          u8 = 0x05;
@@ -541,12 +529,16 @@ pub mod socks_consts {
 mod tests {
     use std::io::Cursor;
 
-    use crate::proxy::ByteAddr;
+    use crate::byteaddr::ByteAddr;
 
     #[test]
-    fn test_from_str() {
+    fn test_host_str() {
         let ba = ByteAddr::from("baidu.com:443").unwrap();
-        println!("ba : {}", ba);
+        println!("host: {}", ba.to_host_string());
+        assert_eq!("baidu.com:443", ba.to_host_string());
+        let ba1 = ByteAddr::from("1.2.5.2:222").unwrap();
+        println!("host: {}", ba1.to_host_string());
+        assert_eq!("1.2.5.2:222", ba1.to_host_string())
     }
 
     #[test]

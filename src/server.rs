@@ -2,8 +2,8 @@ use anyhow::{anyhow, Context};
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use crate::byteaddr::ByteAddr;
 use crate::config::Addr;
-use crate::proxy::ByteAddr;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::read_exact;
 use crate::store::ServerStore;
@@ -140,7 +140,7 @@ impl ServerHandler {
         stream: T,
     ) -> anyhow::Result<ConnType> {
         let head = self.read_head(stream).await.context("Can't read head")?;
-        trace!("Detect head {}", String::from_utf8_lossy(head.as_slice()));
+        debug!("Detect head {}", String::from_utf8_lossy(head.as_slice()));
         if head.len() < 56 {
             return Ok(ConnType::Proxy(head));
         }
@@ -192,18 +192,18 @@ impl ServerHandler {
         let byte_addr = ByteAddr::read_addr(stream, cmd, atyp)
             .await
             .context("Trojan Can't read ByteAddr")?;
+        let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
+
         info!("Requested connection {:?} to {}", self.peer_addr, byte_addr);
+
         let socks_addr = byte_addr
             .to_socket_addr()
             .await
             .context(format!("Can't cover ByteAddr to SocksAddr {}", byte_addr))?;
-
         let mut cs = TcpStream::connect(socks_addr)
             .await
             .context(format!("Trojan can't connect addr {}", byte_addr))?;
         debug!("Trojan connect success {}", byte_addr);
-
-        let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
 
         tokio::select! {
             _ = tokio::io::copy_bidirectional(stream, &mut cs) => debug!("Trojan io copy end"),
@@ -217,21 +217,31 @@ impl ServerHandler {
         stream: &mut T,
         head: Vec<u8>,
     ) -> anyhow::Result<()> {
-        info!("{:?} requested proxy local", self.peer_addr);
         let trojan = self.store.trojan.clone();
-        let mut ls = TcpStream::connect(&trojan.local_addr)
-            .await
-            .context(format!("Proxy can't connect addr {}", &trojan.local_addr))?;
-        debug!("Proxy connect success {:?}", &trojan.local_addr);
 
-        ls.write_all(head.as_slice())
-            .await
-            .context("Proxy can't write prefetch head")?;
+        match trojan.local_addr {
+            Some(ref local_addr) => {
+                info!("requested proxy local {}", local_addr);
+                let mut ls = TcpStream::connect(local_addr)
+                    .await
+                    .context(format!("Proxy can't connect addr {}", local_addr))?;
+                debug!("Proxy connect success {:?}", &trojan.local_addr);
 
-        tokio::select! {
-            _ = tokio::io::copy_bidirectional(stream, &mut ls) => debug!("Trojan io copy end"),
-            _ = self.shutdown.recv() => debug!("recv shutdown signal"),
+                ls.write_all(head.as_slice())
+                    .await
+                    .context("Proxy can't write prefetch head")?;
+
+                tokio::select! {
+                    _ = tokio::io::copy_bidirectional(stream, &mut ls) => debug!("Trojan io copy end"),
+                    _ = self.shutdown.recv() => debug!("recv shutdown signal"),
+                }
+            }
+            None => {
+                info!("response not found");
+                resp_html(stream).await
+            }
         }
+
         Ok(())
     }
 
@@ -260,4 +270,16 @@ pub enum ConnType {
     Trojan,
     Rathole,
     Proxy(Vec<u8>),
+}
+
+async fn resp_html<T: AsyncRead + AsyncWrite + Unpin>(stream: &mut T) {
+    stream
+        .write_all(
+            &b"HTTP/1.0 404 Not Found\r\n\
+                Content-Type: text/plain; charset=utf-8\r\n\
+                Content-length: 13\r\n\r\n\
+                404 Not Found"[..],
+        )
+        .await
+        .unwrap();
 }
