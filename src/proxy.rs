@@ -440,13 +440,13 @@ where
                     buf.put_slice(b.as_slice());
                     Poll::Ready(Ok(()))
                 }
-                Some(Ok(Message::Close(_))) => {
-                    info!("websocket close message");
-                    Poll::Ready(Err(io::Error::from(ErrorKind::Other)))
-                }
+                Some(Ok(Message::Close(_))) => Poll::Ready(Err(io::Error::new(
+                    ErrorKind::Other,
+                    "websocket close message",
+                ))),
                 Some(Ok(_)) => Poll::Ready(Ok(())),
-                Some(Err(_e)) => Poll::Ready(Err(io::Error::from(ErrorKind::Other))),
-                None => Poll::Ready(Err(io::Error::from(ErrorKind::Other))),
+                Some(Err(e)) => Poll::Ready(Err(io::Error::new(ErrorKind::Other, e))),
+                None => Poll::Ready(Err(io::Error::new(ErrorKind::Other, "websocket poll none"))),
             },
             Poll::Pending => Poll::Pending,
         }
