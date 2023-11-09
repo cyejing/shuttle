@@ -1,7 +1,7 @@
 mod common;
 use log::info;
 
-use shuttle::logs::init_log;
+use shuttle::init_log;
 
 #[tokio::test]
 async fn test_socks() {

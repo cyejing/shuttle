@@ -4,7 +4,7 @@ use clap::{command, Parser};
 
 use shuttle::client::{start_proxy, start_rathole};
 use shuttle::config::ClientConfig;
-use shuttle::logs::init_log;
+use shuttle::init_log;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

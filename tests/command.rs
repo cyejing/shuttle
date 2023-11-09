@@ -1,6 +1,6 @@
 mod common;
 use log::info;
-use shuttle::logs::init_log;
+use shuttle::init_log;
 use tokio::io;
 
 use shuttle::rathole::cmd::ping::Ping;

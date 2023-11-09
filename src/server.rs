@@ -2,8 +2,8 @@ use anyhow::{anyhow, Context};
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use crate::byteaddr::ByteAddr;
 use crate::config::Addr;
-use crate::proxy::ByteAddr;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::read_exact;
 use crate::store::ServerStore;
@@ -192,18 +192,18 @@ impl ServerHandler {
         let byte_addr = ByteAddr::read_addr(stream, cmd, atyp)
             .await
             .context("Trojan Can't read ByteAddr")?;
+        let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
+
         info!("Requested connection {:?} to {}", self.peer_addr, byte_addr);
+
         let socks_addr = byte_addr
             .to_socket_addr()
             .await
             .context(format!("Can't cover ByteAddr to SocksAddr {}", byte_addr))?;
-
         let mut cs = TcpStream::connect(socks_addr)
             .await
             .context(format!("Trojan can't connect addr {}", byte_addr))?;
         debug!("Trojan connect success {}", byte_addr);
-
-        let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
 
         tokio::select! {
             _ = tokio::io::copy_bidirectional(stream, &mut cs) => debug!("Trojan io copy end"),

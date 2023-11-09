@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use shuttle::admin::start_admin_server;
 use shuttle::config::ServerConfig;
-use shuttle::logs::init_log;
+use shuttle::init_log;
 use shuttle::server::start_server;
 use shuttle::store::ServerStore;
 

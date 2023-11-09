@@ -232,11 +232,10 @@ mod tests {
 
     #[test]
     fn test_hash() {
-        let hash = sha224("sQtfRnfhcNoZYZh1wY9u");
         assert_eq!(
+            sha224("sQtfRnfhcNoZYZh1wY9u"),
             "6b34e62f6df92b8e9db961410b4f1a6fca1e2dae73f9c1b4b94f4a33",
-            hash
         );
-        println!("{}", hash)
+        assert_eq!(sha224("cyj22334400!"), "3af1c305cd8ec7eebaf03bab42e42dd686e2ef5db27a7c7176350eb0");
     }
 }
