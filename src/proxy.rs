@@ -435,14 +435,19 @@ where
         let me = self.get_mut();
         let next = me.inner.poll_next_unpin(cx);
         match next {
-            Poll::Ready(t) => {
-                if let Some(Ok(Message::Binary(b))) = t {
+            Poll::Ready(t) => match t {
+                Some(Ok(Message::Binary(b))) => {
                     buf.put_slice(b.as_slice());
                     Poll::Ready(Ok(()))
-                } else {
-                    Poll::Pending
                 }
-            }
+                Some(Ok(Message::Close(_))) => {
+                    info!("websocket close message");
+                    Poll::Ready(Err(io::Error::from(ErrorKind::Other)))
+                }
+                Some(Ok(_)) => Poll::Ready(Ok(())),
+                Some(Err(_e)) => Poll::Ready(Err(io::Error::from(ErrorKind::Other))),
+                None => Poll::Ready(Err(io::Error::from(ErrorKind::Other))),
+            },
             Poll::Pending => Poll::Pending,
         }
     }
