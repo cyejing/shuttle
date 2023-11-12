@@ -536,6 +536,8 @@ pub mod socks_consts {
 mod tests {
     use std::io::Cursor;
 
+    use tokio::net::TcpStream;
+
     use crate::byteaddr::ByteAddr;
 
     #[test]
@@ -569,6 +571,6 @@ mod tests {
         let vec = vec![0x01, 0x01, 0x01, 0x01, 0x00, 0x50];
         let mut buf = Cursor::new(vec);
         let addr = ByteAddr::read_addr(&mut buf, 0x01, 0x01).await.unwrap();
-        assert_eq!(addr, ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], 80))
+        assert_eq!(addr, ByteAddr::V4(0x01, 0x01, [0x01, 0x01, 0x01, 0x01], 80));
     }
 }
