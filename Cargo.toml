@@ -21,7 +21,14 @@ anyhow = { version = "1" }
 thiserror ="1.0"
 async-trait = "0.1"
 
+tokio-rustls = "0.24"
+rustls = { version = "0.21.0", default-features = false, features=["dangerous_configuration"] }
+rustls-pemfile = "1"
+webpki-roots = "0.25"
+
+
 [dependencies]
+shuttle-core = {path="shuttle-core"}
 log = "0.4"
 tracing="0.1"
 tracing-appender="0.2"

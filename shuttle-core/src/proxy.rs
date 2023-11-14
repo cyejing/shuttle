@@ -1,19 +1,26 @@
-use anyhow::{anyhow, Context};
-use socks5_proto::handshake;
+use anyhow::Context;
+use socks5_proto::{
+    handshake::{self, Method},
+    Address, Command, Reply, Request, Response,
+};
 use tokio::{
-    io::AsyncWriteExt,
-    net::{TcpListener, TcpStream},
+    io::{copy_bidirectional, AsyncRead, AsyncWrite},
+    net::TcpStream,
 };
 
+use crate::dial::Dial;
+
 #[derive(Debug)]
-struct ProxyConnection {
+pub struct ProxyConnection<T> {
     ts: TcpStream,
+    dial: Box<dyn Dial<T>>,
 }
 
-impl ProxyConnection {
-    pub fn new(ts: TcpStream) -> Self {
-        Self { ts }
+impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
+    pub fn new(ts: TcpStream, dial: Box<dyn Dial<T>>) -> Self {
+        Self { ts, dial }
     }
+
     pub async fn handle(&mut self) -> anyhow::Result<()> {
         let mut first_bit = [0u8];
         self.ts
@@ -29,23 +36,48 @@ impl ProxyConnection {
     }
 
     async fn handle_socks(&mut self) -> anyhow::Result<()> {
-        let mut ts = &mut self.ts;
         debug!(
             "Socks proxy connection {:?} to {:?}",
-            ts.peer_addr().ok(),
-            ts.local_addr().ok()
+            self.ts.peer_addr().ok(),
+            self.ts.local_addr().ok()
         );
 
-        let req = match handshake::Request::read_from(&mut ts).await {
-            Ok(req) => req,
-            Err(err) => {
-                let _ = ts.shutdown().await;
-                return Err(err).context("Socks handshake failed");
-            }
-        };
-        // no neet auth
+        let _req = handshake::Request::read_from(&mut self.ts)
+            .await
+            .context("Socks handshake failed")?;
 
-        todo!()
+        // no neet auth
+        let resp = handshake::Response::new(Method::NONE);
+
+        resp.write_to(&mut self.ts)
+            .await
+            .context("Socks write response failed")?;
+
+        let req = Request::read_from(&mut self.ts)
+            .await
+            .context("Socks read request failed")?;
+
+        let addr = req.address;
+
+        match req.command {
+            Command::Connect => {
+                let target = self.dial.dial(addr).await;
+                if let Ok(mut target) = target {
+                    self.socks_reply(Reply::Succeeded, Address::unspecified())
+                        .await?;
+
+                    copy_bidirectional(&mut target, &mut self.ts).await.ok();
+                } else {
+                    self.socks_reply(Reply::HostUnreachable, Address::unspecified())
+                        .await?;
+                }
+            }
+            _ => {
+                self.socks_reply(Reply::CommandNotSupported, Address::unspecified())
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     async fn handle_http(&mut self) -> anyhow::Result<()> {
@@ -58,30 +90,14 @@ impl ProxyConnection {
 
         todo!()
     }
-}
 
-#[derive(Debug)]
-pub struct ProxyServer {
-    addr: String,
-}
-
-impl ProxyServer {
-    pub async fn start(&self) -> anyhow::Result<()> {
-        let addr = &self.addr;
-        let listener = TcpListener::bind(addr)
+    async fn socks_reply(&mut self, reply: Reply, addr: Address) -> anyhow::Result<()> {
+        let resp = Response::new(reply, addr);
+        resp.write_to(&mut self.ts)
             .await
-            .context(format!("Can't Listen socks addr {}", addr))?;
-
-        tokio::spawn(async move {
-            while let Ok((ts, _)) = listener.accept().await {
-                tokio::spawn(async move {
-                    if let Err(e) = ProxyConnection::new(ts).handle().await {
-                        error!("ProxyServer handle stream err: {e}");
-                    }
-                });
-            }
-        });
-
-        Ok(())
+            .context("Scoks write reply response failed")
     }
 }
+
+#[cfg(test)]
+mod tests {}

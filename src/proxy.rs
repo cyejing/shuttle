@@ -264,7 +264,7 @@ impl Dial {
                     .context(format!("Socks can't connect addr {}", addr_str))
                 {
                     Ok(tts) => {
-                        debug!("Dail mode direct success {}", addr_str);
+                        debug!("Dial mode direct success {}", addr_str);
                         Ok(TCP(Box::new(tts)))
                     }
                     Err(e) => {
@@ -535,8 +535,6 @@ pub mod socks_consts {
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
-
-    use tokio::net::TcpStream;
 
     use crate::byteaddr::ByteAddr;
 

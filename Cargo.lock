@@ -1319,6 +1319,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "shuttle-core",
  "time",
  "tokio",
  "tokio-rustls",
@@ -1334,9 +1335,14 @@ name = "shuttle-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "log",
+ "rustls",
+ "rustls-pemfile",
  "socks5-proto",
  "tokio",
+ "tokio-rustls",
+ "webpki-roots",
 ]
 
 [[package]]

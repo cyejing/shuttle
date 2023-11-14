@@ -9,4 +9,11 @@ edition = "2021"
 log = {workspace=true}
 anyhow = {workspace=true}
 tokio = {workspace=true}
+async-trait = {workspace=true}
+
+tokio-rustls = {workspace=true}
+rustls = {workspace=true}
+rustls-pemfile = {workspace=true}
+webpki-roots = {workspace=true}
+
 socks5-proto = "0.4.0"
