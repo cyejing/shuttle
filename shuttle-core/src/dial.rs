@@ -7,10 +7,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 use tokio_tungstenite::MaybeTlsStream;
 
-use crate::{
-    tls::{make_server_name, make_tls_connector},
-    websocket::WebSocketCopyStream,
-};
+use crate::websocket::WebSocketCopyStream;
 
 #[async_trait]
 pub trait Dial<T>: Sync + Send + fmt::Debug {
@@ -66,30 +63,6 @@ impl Dial<TcpStream> for DirectDial {
                 .context("DirectDial connect {addr} failed")?,
         };
         Ok(target)
-    }
-}
-
-#[async_trait]
-impl Dial<TlsStream<TcpStream>> for DirectDial {
-    async fn dial(&self, addr: Address) -> anyhow::Result<TlsStream<TcpStream>> {
-        let target = match addr {
-            Address::DomainAddress(domain, port) => {
-                let domain = String::from_utf8_lossy(&domain);
-                TcpStream::connect((domain.as_ref(), port))
-                    .await
-                    .context("DirectDial connect {domain} failed")?
-            }
-            Address::SocketAddress(addr) => TcpStream::connect(addr)
-                .await
-                .context("DirectDial connect {addr} failed")?,
-        };
-
-        let server_name = make_server_name("")?;
-        let ssl_target = make_tls_connector(true)
-            .connect(server_name, target)
-            .await
-            .context("Trojan can't connect tls")?;
-        Ok(ssl_target)
     }
 }
 
