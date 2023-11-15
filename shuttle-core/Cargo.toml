@@ -20,3 +20,5 @@ tokio-tungstenite = {workspace=true}
 futures= {workspace=true}
 
 socks5-proto = "0.4.0"
+# socks5-proto = {path="../socks5-proto"}
+bytes = {version="1.4.0",default-features = false, features=["std"]}
