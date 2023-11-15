@@ -5,8 +5,12 @@ use async_trait::async_trait;
 use socks5_proto::Address;
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
+use tokio_tungstenite::MaybeTlsStream;
 
-use crate::tls::{make_server_name, make_tls_connector};
+use crate::{
+    tls::{make_server_name, make_tls_connector},
+    websocket::WebSocketCopyStream,
+};
 
 #[async_trait]
 pub trait Dial<T>: Sync + Send + fmt::Debug {
@@ -28,6 +32,23 @@ pub struct TrojanDial {
 pub struct WebSocketDial {
     remote_addr: String,
     hash: String,
+}
+
+impl TrojanDial {
+    pub fn new(remote_addr: String, hash: String, ssl_enable: bool, invalid_certs: bool) -> Self {
+        Self {
+            remote_addr,
+            hash,
+            ssl_enable,
+            invalid_certs,
+        }
+    }
+}
+
+impl WebSocketDial {
+    pub fn new(remote_addr: String, hash: String) -> Self {
+        Self { remote_addr, hash }
+    }
 }
 
 #[async_trait]
@@ -80,8 +101,18 @@ impl Dial<TcpStream> for TrojanDial {
 }
 
 #[async_trait]
-impl Dial<TcpStream> for WebSocketDial {
-    async fn dial(&self, _addr: Address) -> anyhow::Result<TcpStream> {
+impl Dial<TlsStream<TcpStream>> for TrojanDial {
+    async fn dial(&self, _addr: Address) -> anyhow::Result<TlsStream<TcpStream>> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl Dial<WebSocketCopyStream<MaybeTlsStream<TcpStream>>> for WebSocketDial {
+    async fn dial(
+        &self,
+        _addr: Address,
+    ) -> anyhow::Result<WebSocketCopyStream<MaybeTlsStream<TcpStream>>> {
         todo!()
     }
 }

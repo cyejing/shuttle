@@ -26,6 +26,8 @@ rustls = { version = "0.21.0", default-features = false, features=["dangerous_co
 rustls-pemfile = "1"
 webpki-roots = "0.25"
 
+tokio-tungstenite = {version="0.20", features=["rustls-tls-webpki-roots"]}
+futures= { version = "0.3"}
 
 [dependencies]
 shuttle-core = {path="shuttle-core"}

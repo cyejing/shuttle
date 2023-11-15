@@ -18,7 +18,10 @@ pub struct ServerConfig {
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientConfig {
+    ///  proxy, rathole
     pub run_type: String,
+    #[serde(default = "default_proxy_mode")]
+    pub proxy_mode: String,
     pub remote_addr: String,
     pub password: String,
     #[serde(skip)]
@@ -224,6 +227,10 @@ fn default_false() -> bool {
 
 fn default_admin_addr() -> String {
     String::from("127.0.0.1:4845")
+}
+
+fn default_proxy_mode() -> String {
+    String::from("trojan")
 }
 
 #[cfg(test)]

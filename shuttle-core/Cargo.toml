@@ -16,4 +16,7 @@ rustls = {workspace=true}
 rustls-pemfile = {workspace=true}
 webpki-roots = {workspace=true}
 
+tokio-tungstenite = {workspace=true}
+futures= {workspace=true}
+
 socks5-proto = "0.4.0"

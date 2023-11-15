@@ -1,9 +1,18 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
-use crate::{config::ClientConfig, proxy, rathole};
+use shuttle_core::{
+    dial::{DirectDial, TrojanDial, WebSocketDial},
+    proxy::ProxyConnection,
+    websocket::WebSocketCopyStream,
+};
+use tokio::net::{TcpListener, TcpStream};
+use tokio_rustls::client::TlsStream;
+use tokio_tungstenite::MaybeTlsStream;
+
+use crate::{config::ClientConfig, rathole};
 
 pub async fn start_rathole(cc: ClientConfig) {
-    info!("run with rathole");
+    info!("Run with rathole");
     let mut backoff = 400;
     tokio::spawn(async move {
         loop {
@@ -22,31 +31,68 @@ pub async fn start_rathole(cc: ClientConfig) {
     });
 }
 
-pub async fn start_proxy(cc: ClientConfig, mode: String) {
-    info!("run with proxy use mode {mode}");
-    match mode.as_str() {
-        "trojan" => {
-            let dial = proxy::Dial::Trojan(
-                cc.remote_addr.clone(),
-                cc.hash.clone(),
-                cc.ssl_enable,
-                cc.invalid_certs,
-            );
-            proxy::start_proxy(&cc.proxy_addr, dial).await;
+pub async fn start_proxy(cc: ClientConfig) {
+    info!("Run with proxy use mode {}", cc.proxy_mode);
+    let listener = TcpListener::bind(&cc.proxy_addr)
+        .await
+        .unwrap_or_else(|e| panic!("Can't Listen socks addr {}. err: {e}", cc.proxy_addr));
+
+    let cc = Arc::new(cc);
+
+    tokio::spawn(async move {
+        while let Ok((ts, _)) = listener.accept().await {
+            let cc = cc.clone();
+            tokio::spawn(async move { proxy_handle(cc, ts).await });
         }
-        "direct" => {
-            let dial = proxy::Dial::Direct;
-            proxy::start_proxy(&cc.proxy_addr, dial).await;
+    });
+}
+
+async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
+    match (cc.proxy_mode.as_str(), cc.ssl_enable) {
+        ("direct", false) => {
+            ProxyConnection::<TcpStream>::new(ts, Box::<DirectDial>::default())
+                .handle()
+                .await;
         }
-        "websocket" => {
-            let dial = proxy::Dial::WebSocket(
-                cc.remote_addr.clone(),
-                cc.hash.clone(),
-                cc.ssl_enable,
-                cc.invalid_certs,
-            );
-            proxy::start_proxy(&cc.proxy_addr, dial).await;
+        ("trojan", false) => {
+            ProxyConnection::<TcpStream>::new(
+                ts,
+                Box::<TrojanDial>::new(TrojanDial::new(
+                    cc.remote_addr.clone(),
+                    cc.hash.clone(),
+                    cc.ssl_enable,
+                    cc.invalid_certs,
+                )),
+            )
+            .handle()
+            .await;
         }
-        _ => panic!("unknown socks mode"),
-    }
+        ("trojan", true) => {
+            ProxyConnection::<TlsStream<TcpStream>>::new(
+                ts,
+                Box::<TrojanDial>::new(TrojanDial::new(
+                    cc.remote_addr.clone(),
+                    cc.hash.clone(),
+                    cc.ssl_enable,
+                    cc.invalid_certs,
+                )),
+            )
+            .handle()
+            .await;
+        }
+        ("websocket", _) => {
+            ProxyConnection::<WebSocketCopyStream<MaybeTlsStream<TcpStream>>>::new(
+                ts,
+                Box::<WebSocketDial>::new(WebSocketDial::new(
+                    cc.remote_addr.clone(),
+                    cc.hash.clone(),
+                )),
+            )
+            .handle()
+            .await;
+        }
+        _ => {
+            panic!("unknown proxy_mode or ssl_enable")
+        }
+    };
 }

@@ -1336,12 +1336,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "futures",
  "log",
  "rustls",
  "rustls-pemfile",
  "socks5-proto",
  "tokio",
  "tokio-rustls",
+ "tokio-tungstenite",
  "webpki-roots",
 ]
 

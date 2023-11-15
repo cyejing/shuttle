@@ -21,18 +21,21 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
         Self { ts, dial }
     }
 
-    pub async fn handle(&mut self) -> anyhow::Result<()> {
+    pub async fn handle(&mut self) {
         let mut first_bit = [0u8];
-        self.ts
-            .peek(&mut first_bit)
-            .await
-            .context("Can't peek first_bit")?;
+        if let Err(e) = self.ts.peek(&mut first_bit).await {
+            error!("Can't peek first_bit err: {e}");
+            return;
+        }
 
-        if first_bit[0] == socks5_proto::SOCKS_VERSION {
+        let ret = if first_bit[0] == socks5_proto::SOCKS_VERSION {
             self.handle_socks().await
         } else {
             self.handle_http().await
-        }
+        };
+        if let Err(e) = ret {
+            error!("ProxyServer handle stream err: {e:?}");
+        };
     }
 
     async fn handle_socks(&mut self) -> anyhow::Result<()> {

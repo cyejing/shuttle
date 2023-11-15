@@ -40,7 +40,7 @@ pub async fn start_server(path: &str) {
 pub async fn start_client(path: &str) {
     let cc = ClientConfig::load(Option::Some(PathBuf::from(path)));
     match cc.run_type.as_str() {
-        "proxy" => start_proxy(cc, "trojan".to_string()).await,
+        "proxy" => start_proxy(cc).await,
         "rathole" => start_rathole(cc).await,
         _ => panic!("unknown run type : {}", cc.run_type),
     }

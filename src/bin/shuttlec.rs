@@ -11,9 +11,6 @@ use shuttle::init_log;
 struct Args {
     /// Config Path
     config_path: Option<PathBuf>,
-    /// proxy func connect server e.g.a: trojan, direct
-    #[arg(short, long, default_value = "trojan")]
-    proxy_mode: String,
 }
 
 #[tokio::main]
@@ -24,7 +21,7 @@ async fn main() {
 
     let cc = ClientConfig::load(args.config_path);
     match cc.run_type.as_str() {
-        "proxy" => start_proxy(cc, args.proxy_mode).await,
+        "proxy" => start_proxy(cc).await,
         "rathole" => start_rathole(cc).await,
         _ => panic!("unknown run type : {}", cc.run_type),
     }

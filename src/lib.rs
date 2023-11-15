@@ -15,7 +15,7 @@ pub mod admin;
 pub mod byteaddr;
 pub mod client;
 pub mod config;
-pub mod proxy;
+// pub mod proxy;
 pub mod rathole;
 pub mod server;
 pub mod store;
