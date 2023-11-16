@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use std::{
     io,
     pin::Pin,
@@ -7,23 +6,27 @@ use std::{
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-#[async_trait]
-pub trait AsyncPeek {
-    async fn peek(&mut self, buf: &mut [u8]) -> anyhow::Result<usize>;
-}
-
 #[derive(Debug)]
 pub struct PeekableStream<S> {
     inner: S,
     buf: Option<Vec<u8>>,
 }
 
-#[async_trait]
-impl<S> AsyncPeek for PeekableStream<S>
+impl<S> PeekableStream<S>
 where
-    S: AsyncRead + Unpin + Send,
+    S: AsyncRead + Unpin,
 {
-    async fn peek(&mut self, buf: &mut [u8]) -> anyhow::Result<usize> {
+    pub async fn peek_u8(&mut self) -> anyhow::Result<u8> {
+        let u8 = self.inner.read_u8().await?;
+        if let Some(ref mut peek_buf) = self.buf {
+            peek_buf.push(u8)
+        } else {
+            self.buf = Some(vec![u8]);
+        }
+        Ok(u8)
+    }
+
+    pub async fn peek(&mut self, buf: &mut [u8]) -> anyhow::Result<usize> {
         let n = self.inner.read(buf).await?;
         let mut buf = buf[0..n].to_vec();
         if let Some(ref mut peek_buf) = self.buf {

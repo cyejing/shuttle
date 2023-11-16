@@ -62,6 +62,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
 
         let addr = req.address;
 
+        info!("Requested socks connection to: {addr}");
+
         match req.command {
             Command::Connect => {
                 let target = self.dial.dial(addr).await;

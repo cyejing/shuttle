@@ -1,4 +1,7 @@
 use anyhow::{anyhow, Context};
+use shuttle_core::dial::TrojanDial;
+use shuttle_core::peekable::PeekableStream;
+use shuttle_core::proto;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -7,7 +10,7 @@ use crate::config::Addr;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::read_exact;
 use crate::store::ServerStore;
-use crate::tls::make_tls_acceptor;
+use shuttle_core::tls::make_tls_acceptor;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast;
@@ -139,6 +142,9 @@ impl ServerHandler {
         &mut self,
         stream: T,
     ) -> anyhow::Result<ConnType> {
+        let mut stream = PeekableStream::new(stream);
+        let (hash_str, len) = proto::trojan::Request::peek_hash(&mut stream).await?;
+
         let head = self.read_head(stream).await.context("Can't read head")?;
         debug!("Detect head {}", String::from_utf8_lossy(head.as_slice()));
         if head.len() < 56 {

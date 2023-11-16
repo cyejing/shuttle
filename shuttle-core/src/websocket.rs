@@ -13,7 +13,7 @@ pub struct WebSocketCopyStream<T> {
 
 #[allow(dead_code)]
 impl<T> WebSocketCopyStream<T> {
-    fn new(inner: WebSocketStream<T>) -> Self {
+    pub fn new(inner: WebSocketStream<T>) -> Self {
         Self { inner }
     }
 }

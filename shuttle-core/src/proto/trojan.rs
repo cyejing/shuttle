@@ -5,7 +5,7 @@ use bytes::{BufMut, BytesMut};
 use socks5_proto::{Address, Command};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::ext::AsyncPeek;
+use crate::{peekable::PeekableStream, CRLF};
 
 /// Trojan request
 ///
@@ -27,6 +27,7 @@ use crate::ext::AsyncPeek;
 /// ```
 #[derive(Clone, Debug)]
 pub struct Request {
+    pub hash: String,
     pub command: Command,
     pub address: Address,
 }
@@ -36,26 +37,38 @@ impl Request {
     const ATYP_FQDN: u8 = 0x03;
     const ATYP_IPV6: u8 = 0x04;
 
-    pub const fn new(command: Command, address: Address) -> Self {
-        Self { command, address }
+    pub const fn new(hash: String, command: Command, address: Address) -> Self {
+        Self {
+            hash,
+            command,
+            address,
+        }
     }
 
-    pub async fn peek_hash<R>(r: &mut R) -> anyhow::Result<String>
+    pub async fn peek_hash<T>(r: &mut PeekableStream<T>) -> anyhow::Result<(String, usize)>
     where
-        R: AsyncRead + AsyncPeek + Unpin,
+        T: AsyncRead + Unpin,
     {
-        let mut buf: [u8; 56] = [0; 56];
-        let len = r
-            .peek(&mut buf[..])
-            .await
-            .context("Trojan read hash failed")?;
-        if len != 56 {
-            // todo
-            return Err(anyhow!("The Request not Trojan"));
+        let mut buf = Vec::new();
+        let mut len = 0;
+        for _i in 0..56 {
+            let b1 = r.peek_u8().await.context("Trojan peek u8 failed")?;
+            len += 1;
+            if b1 == b'\r' {
+                let b2 = r.peek_u8().await.context("Trojan peek u8 failed")?;
+                len += 1;
+                if b2 == b'\n' {
+                    buf.push(b1);
+                    buf.push(b2);
+                    break;
+                }
+            } else {
+                buf.push(b1);
+            }
         }
 
-        let hash_str = String::from_utf8_lossy(&buf[..]);
-        Ok(hash_str.to_string())
+        let hash_str = String::from_utf8(buf).context("Trojan hash to string failed")?;
+        Ok((hash_str, len))
     }
 
     pub async fn read_from<R>(r: &mut R) -> anyhow::Result<Self>
@@ -71,13 +84,15 @@ impl Request {
             return Err(anyhow!("The Request not Trojan"));
         }
 
+        let hash = String::from_utf8_lossy(&buf[..]).to_string();
+
         let _crlf = r.read_u16().await?;
 
         let (cmd, addr) = Self::read_address_from(r).await?;
 
         let _crlf = r.read_u16();
 
-        Ok(Self::new(cmd, addr))
+        Ok(Self::new(hash, cmd, addr))
     }
 
     pub async fn read_address_from<R>(r: &mut R) -> anyhow::Result<(Command, Address)>
@@ -143,14 +158,17 @@ impl Request {
     {
         let mut buf = BytesMut::with_capacity(self.serialized_len());
         self.write_to_buf(&mut buf);
-        w.write_all(&buf).await?;
+        w.write_all(&buf).await.context("Trojan Write buf failed")?;
 
         Ok(())
     }
 
     pub fn write_to_buf<B: BufMut>(&self, buf: &mut B) {
+        buf.put_slice(self.hash.as_bytes());
+        buf.put_slice(&CRLF);
         buf.put_u8(u8::from(self.command));
         self.write_to_buf_address(buf);
+        buf.put_slice(&CRLF);
     }
     pub fn write_to_buf_address<B: BufMut>(&self, buf: &mut B) {
         match &self.address {
@@ -176,6 +194,6 @@ impl Request {
     }
 
     pub fn serialized_len(&self) -> usize {
-        1 + self.address.serialized_len()
+        56 + 2 + 1 + self.address.serialized_len() + 2
     }
 }

@@ -19,7 +19,6 @@ pub mod config;
 pub mod rathole;
 pub mod server;
 pub mod store;
-pub mod tls;
 
 pub const CRLF: [u8; 2] = [0x0d, 0x0a];
 

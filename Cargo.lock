@@ -1342,9 +1342,14 @@ dependencies = [
  "rustls",
  "rustls-pemfile",
  "socks5-proto",
+ "thiserror",
+ "time",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
  "webpki-roots",
 ]
 
@@ -1766,6 +1771,7 @@ dependencies = [
  "nu-ansi-term",
  "once_cell",
  "regex",
+ "serde",
  "sharded-slab",
  "smallvec",
  "thread_local",

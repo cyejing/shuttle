@@ -12,8 +12,8 @@ use crate::rathole::cmd::exchange::Exchange;
 use crate::rathole::cmd::hole::Hole;
 use crate::rathole::cmd::Command;
 use crate::rathole::dispatcher::Dispatcher;
-use crate::tls::{make_server_name, make_tls_connector};
 use crate::CRLF;
+use shuttle_core::tls::{make_server_name, make_tls_connector};
 
 use self::cmd::ping::Ping;
 
@@ -74,9 +74,12 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             if last_ping > 0 {
                 hcs.send_sync(Command::Ping(Ping::new(None))).await?;
                 last_ping -= 10;
+            } else {
+                break;
             }
             tokio::time::sleep(Duration::from_secs(10)).await;
         }
+        Ok(())
     });
 
     for hole in cc.holes {
