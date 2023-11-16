@@ -21,7 +21,7 @@ pub async fn start_admin_server(admin_op: Option<Admin>, store: ServerStore) {
         let server = Server::bind(&addr).serve(make_svc);
 
         if let Err(e) = server.await {
-            eprintln!("server error: {}", e);
+            error!("Admin server error: {}", e);
         }
     }
 }

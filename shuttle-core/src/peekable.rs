@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::{
     io,
     pin::Pin,
@@ -6,17 +7,27 @@ use std::{
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
+#[async_trait]
+pub trait AsyncPeek {
+    async fn peek_u8(&mut self) -> anyhow::Result<u8>;
+
+    async fn peek(&mut self, buf: &mut [u8]) -> anyhow::Result<usize>;
+
+    fn drain(&mut self) -> Option<Vec<u8>>;
+}
+
 #[derive(Debug)]
 pub struct PeekableStream<S> {
     inner: S,
     buf: Option<Vec<u8>>,
 }
 
-impl<S> PeekableStream<S>
+#[async_trait]
+impl<S> AsyncPeek for PeekableStream<S>
 where
-    S: AsyncRead + Unpin,
+    S: AsyncRead + Unpin + Send,
 {
-    pub async fn peek_u8(&mut self) -> anyhow::Result<u8> {
+    async fn peek_u8(&mut self) -> anyhow::Result<u8> {
         let u8 = self.inner.read_u8().await?;
         if let Some(ref mut peek_buf) = self.buf {
             peek_buf.push(u8)
@@ -26,7 +37,7 @@ where
         Ok(u8)
     }
 
-    pub async fn peek(&mut self, buf: &mut [u8]) -> anyhow::Result<usize> {
+    async fn peek(&mut self, buf: &mut [u8]) -> anyhow::Result<usize> {
         let n = self.inner.read(buf).await?;
         let mut buf = buf[0..n].to_vec();
         if let Some(ref mut peek_buf) = self.buf {
@@ -35,6 +46,10 @@ where
             self.buf = Some(buf);
         }
         Ok(n)
+    }
+
+    fn drain(&mut self) -> Option<Vec<u8>> {
+        self.buf.take()
     }
 }
 
@@ -50,9 +65,10 @@ where
         let me = self.get_mut();
         if let Some(peek_buf) = me.buf.take() {
             buf.put_slice(&peek_buf);
+            Poll::Ready(Ok(()))
+        } else {
+            Pin::new(&mut me.inner).poll_read(cx, buf)
         }
-        let stream = &mut me.inner;
-        Pin::new(stream).poll_read(cx, buf)
     }
 }
 

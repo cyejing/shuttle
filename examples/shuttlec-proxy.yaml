@@ -1,8 +1,8 @@
 run_type: proxy
-proxy_mode: trojan
-proxy_addr: 127.0.0.1:4080
+proxy_mode: direct
+proxy_addr: 0.0.0.0:4080
 ssl_enable: true
 invalid_certs: true
-remote_addr: 127.0.0.1:4843
+remote_addr: 127.0.0.1:4845
 password: sQtfRnfhcNoZYZh1wY9u
 

@@ -1,5 +1,5 @@
 addrs:
-  - addr: 0.0.0.0:4843
+  - addr: 0.0.0.0:4845
     cert: examples/server.crt
     key: examples/server.key
 admin:

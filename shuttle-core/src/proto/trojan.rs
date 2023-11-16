@@ -5,7 +5,7 @@ use bytes::{BufMut, BytesMut};
 use socks5_proto::{Address, Command};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::{peekable::PeekableStream, CRLF};
+use crate::{peekable::AsyncPeek, CRLF};
 
 /// Trojan request
 ///
@@ -45,18 +45,15 @@ impl Request {
         }
     }
 
-    pub async fn peek_hash<T>(r: &mut PeekableStream<T>) -> anyhow::Result<(String, usize)>
+    pub async fn peek_head<T>(r: &mut T) -> anyhow::Result<Vec<u8>>
     where
-        T: AsyncRead + Unpin,
+        T: AsyncRead + AsyncPeek + Unpin,
     {
         let mut buf = Vec::new();
-        let mut len = 0;
         for _i in 0..56 {
             let b1 = r.peek_u8().await.context("Trojan peek u8 failed")?;
-            len += 1;
             if b1 == b'\r' {
                 let b2 = r.peek_u8().await.context("Trojan peek u8 failed")?;
-                len += 1;
                 if b2 == b'\n' {
                     buf.push(b1);
                     buf.push(b2);
@@ -67,8 +64,7 @@ impl Request {
             }
         }
 
-        let hash_str = String::from_utf8(buf).context("Trojan hash to string failed")?;
-        Ok((hash_str, len))
+        Ok(buf)
     }
 
     pub async fn read_from<R>(r: &mut R) -> anyhow::Result<Self>
@@ -88,9 +84,11 @@ impl Request {
 
         let _crlf = r.read_u16().await?;
 
-        let (cmd, addr) = Self::read_address_from(r).await?;
+        let (cmd, addr) = Self::read_address_from(r)
+            .await
+            .context("Trojan read Address failed")?;
 
-        let _crlf = r.read_u16();
+        let _crlf = r.read_u16().await?;
 
         Ok(Self::new(hash, cmd, addr))
     }
@@ -99,15 +97,17 @@ impl Request {
     where
         R: AsyncRead + Unpin,
     {
-        let cmd = r.read_u8().await?;
+        let cmd = r.read_u8().await.context("Address read cmd failed")?;
         let cmd = Command::try_from(cmd).map_err(|cmd| anyhow!("Unknown cmd {cmd}"))?;
 
-        let atyp = r.read_u8().await?;
+        let atyp = r.read_u8().await.context("Address read atyp failed")?;
 
         match atyp {
             Self::ATYP_IPV4 => {
                 let mut buf = [0; 6];
-                r.read_exact(&mut buf).await?;
+                r.read_exact(&mut buf)
+                    .await
+                    .context("Address read ipv4 failed")?;
 
                 let addr = Ipv4Addr::new(buf[0], buf[1], buf[2], buf[3]);
 
@@ -120,7 +120,9 @@ impl Request {
                 let len = r.read_u8().await? as usize;
 
                 let mut buf = vec![0; len + 2];
-                r.read_exact(&mut buf).await?;
+                r.read_exact(&mut buf)
+                    .await
+                    .context("Address read domain failed")?;
 
                 let port = u16::from_be_bytes([buf[len], buf[len + 1]]);
                 buf.truncate(len);
@@ -130,7 +132,9 @@ impl Request {
             }
             Self::ATYP_IPV6 => {
                 let mut buf = [0; 18];
-                r.read_exact(&mut buf).await?;
+                r.read_exact(&mut buf)
+                    .await
+                    .context("Address read ipv6 failed")?;
 
                 let addr = Ipv6Addr::new(
                     u16::from_be_bytes([buf[0], buf[1]]),

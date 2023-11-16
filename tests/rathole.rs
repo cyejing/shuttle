@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use log::info;
 use shuttle::{
     init_log,
     rathole::{
@@ -28,8 +27,5 @@ async fn test_rathole_ping() {
     command_write.write_command(10, ping).await.unwrap();
 
     let resp = command_read.read_command().await.unwrap();
-    info!("{:?}", resp);
     assert_eq!(format!("{:?}", resp), "(10, Resp(Ok(\"hi\")))");
-
-    info!("hi");
 }

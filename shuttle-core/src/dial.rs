@@ -63,11 +63,11 @@ impl Dial<TcpStream> for DirectDial {
                 let domain = String::from_utf8_lossy(&domain);
                 TcpStream::connect((domain.as_ref(), port))
                     .await
-                    .context("DirectDial connect {domain} failed")?
+                    .context(format!("DirectDial connect {domain} failed"))?
             }
             Address::SocketAddress(addr) => TcpStream::connect(addr)
                 .await
-                .context("DirectDial connect {addr} failed")?,
+                .context(format!("DirectDial connect {addr} failed"))?,
         };
         Ok(target)
     }

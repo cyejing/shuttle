@@ -49,7 +49,7 @@ pub async fn start_proxy(cc: ClientConfig) {
 
 async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
     match (cc.proxy_mode.as_str(), cc.ssl_enable) {
-        ("direct", false) => {
+        ("direct", _) => {
             ProxyConnection::<TcpStream>::new(ts, Box::<DirectDial>::default())
                 .handle()
                 .await;

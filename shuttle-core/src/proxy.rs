@@ -1,7 +1,13 @@
+use std::{
+    cell::RefCell,
+    sync::{Arc, Mutex},
+};
+
 use anyhow::Context;
+use hyper::{header, server::conn, service::service_fn, Body};
 use socks5_proto::{
     handshake::{self, Method},
-    Address, Command, Reply, Request, Response,
+    Address, Command, Reply, Request as SocksRequest, Response,
 };
 use tokio::{
     io::{copy_bidirectional, AsyncRead, AsyncWrite},
@@ -56,7 +62,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
             .await
             .context("Socks write response failed")?;
 
-        let req = Request::read_from(&mut self.ts)
+        let req = SocksRequest::read_from(&mut self.ts)
             .await
             .context("Socks read request failed")?;
 
@@ -86,14 +92,33 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
     }
 
     async fn handle_http(&mut self) -> anyhow::Result<()> {
-        let ts = &self.ts;
         debug!(
             "Http proxy connection {:?} to {:?}",
-            ts.peer_addr().ok(),
-            ts.local_addr().ok()
+            self.ts.peer_addr().ok(),
+            self.ts.local_addr().ok()
         );
+        let host: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let host_move = host.clone();
 
-        todo!()
+        if let Err(http_err) = conn::Http::new()
+            .http1_only(true)
+            .http1_keep_alive(true)
+            .serve_connection(
+                &mut self.ts,
+                service_fn(move |req| http_connect(req, host_move.clone())),
+            )
+            .await
+        {
+            error!("Error while serving HTTP connection: {}", http_err);
+        }
+
+        // todo
+        // if let Some(host) = host.lock().unwrap().take() {
+        let mut target = TcpStream::connect("www.baidu.com:443").await.unwrap();
+        copy_bidirectional(&mut target, &mut self.ts).await.ok();
+        // }
+
+        Ok(())
     }
 
     async fn socks_reply(&mut self, reply: Reply, addr: Address) -> anyhow::Result<()> {
@@ -102,6 +127,22 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
             .await
             .context("Scoks write reply response failed")
     }
+}
+
+async fn http_connect(
+    req: hyper::Request<Body>,
+    host_call: Arc<Mutex<Option<String>>>,
+) -> anyhow::Result<hyper::Response<String>> {
+    if let Some(host) = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+    {
+        info!("{},{},{}", req.method(), req.uri(), host);
+        let _ = host_call.lock().unwrap().insert(host.to_string());
+    }
+
+    Ok(hyper::Response::new("hi".to_string()))
 }
 
 #[cfg(test)]

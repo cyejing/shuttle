@@ -1,11 +1,8 @@
 use anyhow::{anyhow, Context};
-use shuttle_core::dial::TrojanDial;
-use shuttle_core::peekable::PeekableStream;
-use shuttle_core::proto;
-use std::net::SocketAddr;
-use std::time::Duration;
+use shuttle_core::dial::{Dial, DirectDial};
+use shuttle_core::peekable::{AsyncPeek, PeekableStream};
+use shuttle_core::proto::{self, trojan};
 
-use crate::byteaddr::ByteAddr;
 use crate::config::Addr;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::read_exact;
@@ -13,8 +10,6 @@ use crate::store::ServerStore;
 use shuttle_core::tls::make_tls_acceptor;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast;
-use tokio::sync::broadcast::Receiver;
 use tokio_rustls::TlsAcceptor;
 
 pub async fn start_server(addr: Addr, store: ServerStore) {
@@ -32,215 +27,141 @@ pub async fn start_server(addr: Addr, store: ServerStore) {
         None
     };
 
-    let (notify_shutdown, _) = broadcast::channel(1);
-    let mut server = Server {
-        addr_str,
-        listener,
-        store,
-        acceptor,
-        notify_shutdown,
-    };
     tokio::spawn(async move {
-        if let Err(err) = server.run().await {
-            error!(
-                "Server [{}] accept connection err : {:?}",
-                server.addr_str, err
-            );
+        while let Ok((ts, _)) = listener.accept().await {
+            let store = store.clone();
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move { server_handle(ts, store, acceptor).await });
         }
     });
 }
 
-struct Server {
-    addr_str: String,
-    listener: TcpListener,
-    store: ServerStore,
-    acceptor: Option<TlsAcceptor>,
-    notify_shutdown: broadcast::Sender<()>,
-}
-
-impl Server {
-    async fn run(&mut self) -> anyhow::Result<()> {
-        loop {
-            let socket = self.accept().await.context("Server Can't accept conn")?;
-            let peer_addr = socket.peer_addr().ok();
-            debug!("Server apccept conn {:?}", peer_addr);
-
-            let mut handler = ServerHandler {
-                peer_addr,
-                hash: None,
-                store: self.store.clone(),
-                shutdown: self.notify_shutdown.subscribe(),
-            };
-            match &self.acceptor {
-                Some(tls_acc) => {
-                    let tls_acc = tls_acc.clone();
-                    tokio::spawn(async move {
-                        match tls_acc.accept(socket).await {
-                            Ok(tls_ts) => {
-                                if let Err(err) = handler.run(tls_ts).await {
-                                    error!("Handler tls connection error : {:?}", err);
-                                }
-                            }
-                            Err(e) => {
-                                error!("Accept tls connection err : {:?}", e);
-                            }
-                        };
-                    });
-                }
-                None => {
-                    tokio::spawn(async move {
-                        if let Err(err) = handler.run(socket).await {
-                            error!("Handler tcp connection error : {:?}", err);
-                        }
-                    });
-                }
-            }
-        }
-    }
-
-    async fn accept(&mut self) -> anyhow::Result<TcpStream> {
-        let mut backoff = 100;
-
-        loop {
-            match self.listener.accept().await {
-                Ok((socket, _)) => return Ok(socket),
-                Err(err) => {
-                    if backoff > 6400 {
-                        return Err(err.into());
+async fn server_handle(ts: TcpStream, store: ServerStore, acceptor: Option<TlsAcceptor>) {
+    match acceptor {
+        Some(tls_acc) => {
+            match tls_acc.accept(ts).await {
+                Ok(tls_ts) => {
+                    if let Err(err) = ServerHandler::new(PeekableStream::new(tls_ts), store)
+                        .run()
+                        .await
+                    {
+                        error!("Handler tls connection error : {:?}", err);
                     }
                 }
+                Err(e) => {
+                    error!("Accept tls connection err : {:?}", e);
+                }
+            };
+        }
+        None => {
+            if let Err(err) = ServerHandler::new(PeekableStream::new(ts), store)
+                .run()
+                .await
+            {
+                error!("Handler tcp connection error : {:?}", err);
             }
-
-            tokio::time::sleep(Duration::from_millis(backoff)).await;
-
-            backoff *= 2;
         }
     }
 }
 
-struct ServerHandler {
-    peer_addr: Option<SocketAddr>,
+struct ServerHandler<T> {
+    inner: T,
     hash: Option<String>,
     store: ServerStore,
-    shutdown: Receiver<()>,
 }
 
-impl ServerHandler {
-    async fn run<T: AsyncRead + AsyncWrite + Unpin>(
-        &mut self,
-        mut stream: T,
-    ) -> anyhow::Result<()> {
-        match self.detect_head(&mut stream).await {
-            Ok(ConnType::Trojan) => self.handle_trojan(&mut stream).await,
-            Ok(ConnType::Rathole) => self.handle_rathole(&mut stream).await,
-            Ok(ConnType::Proxy(head)) => self.handle_proxy(&mut stream, head).await,
+impl<T> ServerHandler<T>
+where
+    T: AsyncRead + AsyncWrite + AsyncPeek + Unpin,
+{
+    pub fn new(inner: T, store: ServerStore) -> Self {
+        Self {
+            inner,
+            hash: None,
+            store,
+        }
+    }
+
+    async fn run(&mut self) -> anyhow::Result<()> {
+        match self.detect_head().await {
+            Ok(ConnType::Trojan) => self.handle_trojan().await,
+            Ok(ConnType::Rathole) => self.handle_rathole().await,
+            Ok(ConnType::Proxy) => self.handle_proxy().await,
             Err(e) => Err(e).context("Can't detect head"),
         }
     }
 
-    async fn detect_head<T: AsyncRead + AsyncWrite + Unpin>(
-        &mut self,
-        stream: T,
-    ) -> anyhow::Result<ConnType> {
-        let mut stream = PeekableStream::new(stream);
-        let (hash_str, len) = proto::trojan::Request::peek_hash(&mut stream).await?;
-
-        let head = self.read_head(stream).await.context("Can't read head")?;
-        debug!("Detect head {}", String::from_utf8_lossy(head.as_slice()));
+    async fn detect_head(&mut self) -> anyhow::Result<ConnType> {
+        let head = proto::trojan::Request::peek_head(&mut self.inner)
+            .await
+            .context("Server peek head failed")?;
         if head.len() < 56 {
-            return Ok(ConnType::Proxy(head));
+            return Ok(ConnType::Proxy);
         }
-        let hash_str = String::from_utf8(head.clone()).context("Can't stringing hash head")?;
+
+        let hash_str = String::from_utf8(head).context("Trojan hash to string failed")?;
 
         let trojan = self.store.trojan.clone();
         let rathole = self.store.rathole.clone();
 
         if trojan.password_hash.contains_key(&hash_str) {
-            debug!("{} detect trojan", hash_str);
+            debug!("detect trojan {}", hash_str);
             self.hash = Some(hash_str);
             Ok(ConnType::Trojan)
         } else if rathole.password_hash.contains_key(&hash_str) {
-            debug!("{} detect rathole", hash_str);
+            debug!("detect rathole {}", hash_str);
             self.hash = Some(hash_str);
             Ok(ConnType::Rathole)
         } else {
             debug!("detect proxy");
-            Ok(ConnType::Proxy(head))
+            Ok(ConnType::Proxy)
         }
     }
 
-    async fn read_head<T: AsyncRead + AsyncWrite + Unpin>(
-        &self,
-        mut stream: T,
-    ) -> anyhow::Result<Vec<u8>> {
-        let mut buf = Vec::new();
-        for _i in 0..56 {
-            let u81 = stream.read_u8().await?;
-            if u81 == b'\r' {
-                let u82 = stream.read_u8().await?;
-                if u82 == b'\n' {
-                    buf.push(u81);
-                    buf.push(u82);
-                    return Ok(buf);
-                }
-            } else {
-                buf.push(u81);
-            }
+    async fn handle_trojan(&mut self) -> anyhow::Result<()> {
+        let stream = &mut self.inner;
+        let req = trojan::Request::read_from(stream)
+            .await
+            .context("Trojan request read failed")?;
+        let addr = req.address.clone();
+
+        info!("Trojan Requested connection to {}", addr);
+
+        let mut remote_ts = DirectDial::default()
+            .dial(addr)
+            .await
+            .context(format!("Trojan connect remote addr {} failed", req.address))?;
+
+        debug!("Trojan connect success {}", req.address);
+
+        if let Ok((a, b)) = tokio::io::copy_bidirectional(stream, &mut remote_ts).await {
+            info!(
+                "Trojan copy end for {}. transfer {}+{}={}",
+                req.address,
+                a,
+                b,
+                a + b
+            );
         }
-        Ok(buf)
-    }
 
-    async fn handle_trojan<T: AsyncRead + AsyncWrite + Unpin>(
-        &mut self,
-        stream: &mut T,
-    ) -> anyhow::Result<()> {
-        let [_cr, _cf, cmd, atyp] = read_exact!(stream, [0u8; 4])?;
-        let byte_addr = ByteAddr::read_addr(stream, cmd, atyp)
-            .await
-            .context("Trojan Can't read ByteAddr")?;
-        let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
-
-        info!("Requested connection {:?} to {}", self.peer_addr, byte_addr);
-
-        let socks_addr = byte_addr
-            .to_socket_addr()
-            .await
-            .context(format!("Can't cover ByteAddr to SocksAddr {}", byte_addr))?;
-        let mut cs = TcpStream::connect(socks_addr)
-            .await
-            .context(format!("Trojan can't connect addr {}", byte_addr))?;
-        debug!("Trojan connect success {}", byte_addr);
-
-        tokio::select! {
-            _ = tokio::io::copy_bidirectional(stream, &mut cs) => debug!("Trojan io copy end"),
-            _ = self.shutdown.recv() => debug!("recv shutdown signal"),
-        }
         Ok(())
     }
 
-    async fn handle_proxy<T: AsyncRead + AsyncWrite + Unpin>(
-        &mut self,
-        stream: &mut T,
-        head: Vec<u8>,
-    ) -> anyhow::Result<()> {
+    async fn handle_proxy(&mut self) -> anyhow::Result<()> {
+        let stream = &mut self.inner;
         let trojan = self.store.trojan.clone();
 
         match trojan.local_addr {
             Some(ref local_addr) => {
                 info!("requested proxy local {}", local_addr);
-                let mut ls = TcpStream::connect(local_addr)
+                let mut local_ts = TcpStream::connect(local_addr)
                     .await
                     .context(format!("Proxy can't connect addr {}", local_addr))?;
                 debug!("Proxy connect success {:?}", &trojan.local_addr);
 
-                ls.write_all(head.as_slice())
+                tokio::io::copy_bidirectional(stream, &mut local_ts)
                     .await
-                    .context("Proxy can't write prefetch head")?;
-
-                tokio::select! {
-                    _ = tokio::io::copy_bidirectional(stream, &mut ls) => debug!("Trojan io copy end"),
-                    _ = self.shutdown.recv() => debug!("recv shutdown signal"),
-                }
+                    .ok();
             }
             None => {
                 info!("response not found");
@@ -251,10 +172,9 @@ impl ServerHandler {
         Ok(())
     }
 
-    async fn handle_rathole<T: AsyncRead + AsyncWrite + Unpin>(
-        &mut self,
-        stream: &mut T,
-    ) -> anyhow::Result<()> {
+    async fn handle_rathole(&mut self) -> anyhow::Result<()> {
+        let stream = &mut self.inner;
+        let _ = stream.drain();
         let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
         let hash_str = self
             .hash
@@ -262,11 +182,10 @@ impl ServerHandler {
             .ok_or_else(|| anyhow!("rathole hash empty!"))?;
         let (mut dispatcher, cs) = Dispatcher::new(stream, hash_str.clone());
         self.store.set_cmd_sender(cs).await;
-        tokio::select! {
-            r = dispatcher.dispatch() => debug!("dispatch end {:?}", r),
-            _ = self.shutdown.recv() => debug!("recv shutdown signal"),
-        };
+
+        dispatcher.dispatch().await.ok();
         drop(dispatcher);
+
         self.store.remove_cmd_sender(&hash_str).await;
         Ok(())
     }
@@ -275,7 +194,7 @@ impl ServerHandler {
 pub enum ConnType {
     Trojan,
     Rathole,
-    Proxy(Vec<u8>),
+    Proxy,
 }
 
 async fn resp_html<T: AsyncRead + AsyncWrite + Unpin>(stream: &mut T) {

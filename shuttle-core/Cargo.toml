@@ -32,3 +32,4 @@ futures= { version = "0.3"}
 bytes = {version="1.4.0",default-features = false, features=["std"]}
 
 socks5-proto = "0.4.0"
+hyper = {version = "0.14.27", features=["full"] }
