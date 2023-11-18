@@ -1,6 +1,7 @@
 use std::{str::Split, sync::Arc};
 
 use anyhow::anyhow;
+use log::debug;
 use socks5_proto::Address;
 use tokio::io::{AsyncRead, AsyncReadExt};
 

@@ -1,5 +1,4 @@
-#[macro_use]
-extern crate log;
+#![doc = include_str!("../README.md")]
 
 pub mod dial;
 pub mod peekable;

@@ -1,4 +1,5 @@
 use anyhow::Context;
+use log::{debug, error, info};
 use socks5_proto::{
     handshake::{self, Method},
     Address, Command, Reply, Request as SocksRequest, Response,

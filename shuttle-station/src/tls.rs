@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context};
+use log::debug;
 use rustls::client::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::ServerName;
 use rustls::{DigitallySignedStruct, Error as TLSError};
