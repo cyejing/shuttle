@@ -123,6 +123,7 @@ impl Dial<WebSocketCopyStream<MaybeTlsStream<TcpStream>>> for WebSocketDial {
         ws.send(Message::Binary(buf))
             .await
             .context("WebSocket can't send")?;
+        ws.flush().await?;
 
         Ok(WebSocketCopyStream::new(ws))
     }

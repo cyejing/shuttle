@@ -130,6 +130,10 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
                         .write_all(&data.data())
                         .await
                         .context("Http proxy target write_all buf failed")?;
+                    target
+                        .flush()
+                        .await
+                        .context("Http proxy flush target failed")?;
                 } else {
                     self.ts
                         .write("HTTP/1.1 200 OK\r\n\r\n".as_bytes())
