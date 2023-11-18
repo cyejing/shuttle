@@ -1,12 +1,9 @@
 use std::{str::Split, sync::Arc};
 
+use socks5_proto::Address;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-#[allow(dead_code)]
-const REQUEST_END_MARKER: &[u8] = b"\r\n\r\n";
-/// A reasonable value to limit possible header size.
-#[allow(dead_code)]
 const MAX_HTTP_REQUEST_SIZE: usize = 16384;
 
 #[derive(Debug, Clone, Error)]
@@ -15,9 +12,8 @@ pub enum HttpResult {
     BadRequest,
 }
 
-#[allow(dead_code)]
 pub struct HttpConnectRequest {
-    pub host: String,
+    pub addr: Address,
     pub nugget: Option<Nugget>,
 }
 
@@ -47,9 +43,8 @@ pub async fn read_http_request_end<T: AsyncRead + Unpin>(r: &mut T) -> anyhow::R
     Ok(buf)
 }
 
-#[allow(dead_code)]
 impl HttpConnectRequest {
-    pub fn parse(http_request: &[u8]) -> Result<Self, HttpResult> {
+    pub fn parse(http_request: &[u8]) -> anyhow::Result<Self> {
         HttpConnectRequest::precondition_size(http_request)?;
         HttpConnectRequest::precondition_legal_characters(http_request)?;
 
@@ -66,17 +61,36 @@ impl HttpConnectRequest {
 
         let has_nugget = request_line.3;
 
-        if has_nugget {
-            Ok(Self {
-                host: HttpConnectRequest::extract_destination_host(&mut lines, request_line.1)
+        let (host, nugget) = if has_nugget {
+            (
+                HttpConnectRequest::extract_destination_host(&mut lines, request_line.1)
                     .unwrap_or_else(|| request_line.1.to_string()),
-                nugget: Some(Nugget::new(http_request)),
-            })
+                Some(Nugget::new(http_request)),
+            )
         } else {
-            Ok(Self {
-                host: request_line.1.to_string(),
-                nugget: None,
-            })
+            (request_line.1.to_string(), None)
+        };
+
+        Ok(Self {
+            addr: Self::host_to_address(host)?,
+            nugget,
+        })
+    }
+
+    fn host_to_address(host: String) -> anyhow::Result<Address> {
+        let mut split: Vec<&str> = host.split(':').collect();
+        if split.len() == 2 {
+            let port = split.pop().expect("host_to_address split pop failed");
+            let domain = split.pop().expect("host_to_address split pop failed");
+            Ok(Address::DomainAddress(
+                domain.as_bytes().to_vec(),
+                port.parse()?,
+            ))
+        } else {
+            Err(anyhow::anyhow!(format!(
+                "http connect host to adddress failed: {} ",
+                host
+            )))
         }
     }
 

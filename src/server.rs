@@ -2,10 +2,11 @@ use anyhow::{anyhow, Context};
 use shuttle_core::dial::{Dial, DirectDial};
 use shuttle_core::peekable::{AsyncPeek, PeekableStream};
 use shuttle_core::proto::{self, trojan};
+use tracing::{info_span, Instrument};
 
 use crate::config::Addr;
+use crate::gen_traceid;
 use crate::rathole::dispatcher::Dispatcher;
-use crate::read_exact;
 use crate::store::ServerStore;
 use shuttle_core::tls::make_tls_acceptor;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -31,7 +32,8 @@ pub async fn start_server(addr: Addr, store: ServerStore) {
         while let Ok((ts, _)) = listener.accept().await {
             let store = store.clone();
             let acceptor = acceptor.clone();
-            tokio::spawn(async move { server_handle(ts, store, acceptor).await });
+            let span = info_span!("trace", traceid = gen_traceid());
+            tokio::spawn(async move { server_handle(ts, store, acceptor).instrument(span).await });
         }
     });
 }
@@ -41,12 +43,9 @@ async fn server_handle(ts: TcpStream, store: ServerStore, acceptor: Option<TlsAc
         Some(tls_acc) => {
             match tls_acc.accept(ts).await {
                 Ok(tls_ts) => {
-                    if let Err(err) = ServerHandler::new(PeekableStream::new(tls_ts), store)
-                        .run()
+                    ServerHandler::new(PeekableStream::new(tls_ts), store)
+                        .handle()
                         .await
-                    {
-                        error!("Handler tls connection error : {:?}", err);
-                    }
                 }
                 Err(e) => {
                     error!("Accept tls connection err : {:?}", e);
@@ -54,12 +53,9 @@ async fn server_handle(ts: TcpStream, store: ServerStore, acceptor: Option<TlsAc
             };
         }
         None => {
-            if let Err(err) = ServerHandler::new(PeekableStream::new(ts), store)
-                .run()
+            ServerHandler::new(PeekableStream::new(ts), store)
+                .handle()
                 .await
-            {
-                error!("Handler tcp connection error : {:?}", err);
-            }
         }
     }
 }
@@ -82,13 +78,16 @@ where
         }
     }
 
-    async fn run(&mut self) -> anyhow::Result<()> {
-        match self.detect_head().await {
+    async fn handle(&mut self) {
+        let ret = match self.detect_head().await {
             Ok(ConnType::Trojan) => self.handle_trojan().await,
             Ok(ConnType::Rathole) => self.handle_rathole().await,
             Ok(ConnType::Proxy) => self.handle_proxy().await,
             Err(e) => Err(e).context("Can't detect head"),
-        }
+        };
+        if let Err(e) = ret {
+            error!("Server handle err: {e:?}");
+        };
     }
 
     async fn detect_head(&mut self) -> anyhow::Result<ConnType> {
@@ -125,7 +124,7 @@ where
             .context("Trojan request read failed")?;
         let addr = req.address.clone();
 
-        info!("Trojan Requested connection to {}", addr);
+        info!("Trojan Requested to {}", addr);
 
         let mut remote_ts = DirectDial::default()
             .dial(addr)
@@ -136,7 +135,7 @@ where
 
         if let Ok((a, b)) = tokio::io::copy_bidirectional(stream, &mut remote_ts).await {
             info!(
-                "Trojan copy end for {}. transfer {}+{}={}",
+                "Trojan copy end for {} traffic: {}<=>{} total: {}",
                 req.address,
                 a,
                 b,
@@ -175,7 +174,7 @@ where
     async fn handle_rathole(&mut self) -> anyhow::Result<()> {
         let stream = &mut self.inner;
         let _ = stream.drain();
-        let [_cr, _cf] = read_exact!(stream, [0u8; 2])?;
+        let _crlf = stream.read_u16().await?;
         let hash_str = self
             .hash
             .clone()

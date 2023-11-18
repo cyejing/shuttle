@@ -24,26 +24,22 @@ pub trait Dial<T>: Sync + Send + fmt::Debug {
 #[derive(Debug, Default)]
 pub struct DirectDial {}
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct TrojanDial {
     remote_addr: String,
     hash: String,
-    ssl_enable: bool,
     invalid_certs: bool,
 }
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct WebSocketDial {
     remote_addr: String,
     hash: String,
 }
 
 impl TrojanDial {
-    pub fn new(remote_addr: String, hash: String, ssl_enable: bool, invalid_certs: bool) -> Self {
+    pub fn new(remote_addr: String, hash: String, invalid_certs: bool) -> Self {
         Self {
             remote_addr,
             hash,
-            ssl_enable,
             invalid_certs,
         }
     }

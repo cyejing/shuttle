@@ -8,8 +8,9 @@ use shuttle_core::{
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
 use tokio_tungstenite::MaybeTlsStream;
+use tracing::{info_span, Instrument};
 
-use crate::{config::ClientConfig, rathole};
+use crate::{config::ClientConfig, gen_traceid, rathole};
 
 pub async fn start_rathole(cc: ClientConfig) {
     info!("Run with rathole");
@@ -45,7 +46,8 @@ pub async fn start_proxy(cc: ClientConfig) {
     tokio::spawn(async move {
         while let Ok((ts, _)) = listener.accept().await {
             let cc = cc.clone();
-            tokio::spawn(async move { proxy_handle(cc, ts).await });
+            let span = info_span!("trace", traceid = gen_traceid());
+            tokio::spawn(async move { proxy_handle(cc, ts).instrument(span).await });
         }
     });
 }
@@ -63,7 +65,6 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
                 Box::<TrojanDial>::new(TrojanDial::new(
                     cc.remote_addr.clone(),
                     cc.hash.clone(),
-                    cc.ssl_enable,
                     cc.invalid_certs,
                 )),
             )
@@ -76,7 +77,6 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
                 Box::<TrojanDial>::new(TrojanDial::new(
                     cc.remote_addr.clone(),
                     cc.hash.clone(),
-                    cc.ssl_enable,
                     cc.invalid_certs,
                 )),
             )

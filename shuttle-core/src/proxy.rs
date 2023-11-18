@@ -34,7 +34,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
             self.handle_http().await
         };
         if let Err(e) = ret {
-            error!("ProxyServer handle stream err: {e:?}");
+            error!("Proxy handle err: {e:?}");
         };
     }
 
@@ -66,23 +66,38 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
 
         match req.command {
             Command::Connect => {
-                let target = self.dial.dial(addr).await;
-                if let Ok(mut target) = target {
-                    self.socks_reply(Reply::Succeeded, Address::unspecified())
-                        .await?;
+                let target = self.dial.dial(addr.clone()).await;
+                match target {
+                    Ok(mut target) => {
+                        self.socks_reply(Reply::Succeeded, Address::unspecified())
+                            .await?;
 
-                    copy_bidirectional(&mut target, &mut self.ts).await.ok();
-                } else {
-                    self.socks_reply(Reply::HostUnreachable, Address::unspecified())
-                        .await?;
+                        if let Ok((a, b)) = copy_bidirectional(&mut self.ts, &mut target).await {
+                            debug!(
+                                "Socks copy end for {} traffic: {}<=>{} total: {}",
+                                addr,
+                                a,
+                                b,
+                                a + b
+                            );
+                        }
+
+                        Ok(())
+                    }
+                    Err(e) => {
+                        self.socks_reply(Reply::HostUnreachable, Address::unspecified())
+                            .await?;
+                        Err(e).context(format!("Socks proxy connect addr {} failed", addr))
+                    }
                 }
             }
-            _ => {
+            cmd => {
+                debug!("Socks unsupported command {:?}", cmd);
                 self.socks_reply(Reply::CommandNotSupported, Address::unspecified())
                     .await?;
+                Ok(())
             }
         }
-        Ok(())
     }
 
     async fn handle_http(mut self) -> anyhow::Result<()> {
@@ -94,16 +109,20 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
         let buf = http_connect::read_http_request_end(&mut self.ts)
             .await
             .context("Http proxy read http request end failed")?;
-        info!(
+
+        debug!(
             "Http proxy read buf: \n{}",
             String::from_utf8_lossy(buf.as_slice())
         );
         match http_connect::HttpConnectRequest::parse(buf.as_slice()) {
             Ok(req) => {
-                let mut target = TcpStream::connect(&req.host)
+                let addr = req.addr;
+                info!("Http proxy connect {}", addr);
+                let mut target = self
+                    .dial
+                    .dial(addr.clone())
                     .await
-                    .context(format!("Http proxy connect addr {} failed", req.host))?;
-                info!("Http proxy connect {}", req.host);
+                    .context(format!("Http proxy connect addr {} failed", addr))?;
 
                 if let Some(data) = req.nugget {
                     target
@@ -118,11 +137,17 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
                 }
 
                 if let Ok((a, b)) = copy_bidirectional(&mut self.ts, &mut target).await {
-                    info!("Http proxy copy {} end {}={}", req.host, a, b);
+                    debug!(
+                        "Http copy end for {} traffic: {}<=>{} total: {}",
+                        addr,
+                        a,
+                        b,
+                        a + b
+                    );
                 }
             }
             Err(_e) => {
-                error!("Http proxy BAD_REQUEST");
+                debug!("Http proxy BAD_REQUEST");
                 self.ts
                     .write("HTTP/1.1 400 BAD_REQUEST\r\n\r\n".as_bytes())
                     .await

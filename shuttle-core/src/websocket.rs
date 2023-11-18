@@ -11,7 +11,6 @@ pub struct WebSocketCopyStream<T> {
     inner: WebSocketStream<T>,
 }
 
-#[allow(dead_code)]
 impl<T> WebSocketCopyStream<T> {
     pub fn new(inner: WebSocketStream<T>) -> Self {
         Self { inner }

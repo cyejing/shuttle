@@ -35,6 +35,7 @@ impl ServerStore {
         self.cmd_map.read().await.get(hash).cloned()
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn list_cmd_sender(&self) -> Vec<Arc<CommandSender>> {
         self.cmd_map.read().await.values().cloned().collect_vec()
     }
