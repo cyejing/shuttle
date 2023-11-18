@@ -19,5 +19,6 @@ check:
 	cargo fmt --check -v
 	cargo clippy -- -D warnings
 
-
+publish:
+	cargo publish --registry crates-io
 
