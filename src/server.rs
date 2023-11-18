@@ -9,7 +9,7 @@ use crate::gen_traceid;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::store::ServerStore;
 use shuttle_station::tls::make_tls_acceptor;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
 
@@ -32,7 +32,7 @@ pub async fn start_server(addr: Addr, store: ServerStore) {
         while let Ok((ts, _)) = listener.accept().await {
             let store = store.clone();
             let acceptor = acceptor.clone();
-            let span = info_span!("trace", traceid = gen_traceid());
+            let span = info_span!("trace", id = gen_traceid());
             tokio::spawn(async move { server_handle(ts, store, acceptor).instrument(span).await });
         }
     });
@@ -133,7 +133,7 @@ where
 
         debug!("Trojan connect success {}", req.address);
 
-        if let Ok((a, b)) = tokio::io::copy_bidirectional(stream, &mut remote_ts).await {
+        if let Ok((a, b)) = copy_bidirectional(stream, &mut remote_ts).await {
             info!(
                 "Trojan copy end for {} traffic: {}<=>{} total: {}",
                 req.address,
@@ -158,9 +158,7 @@ where
                     .context(format!("Proxy can't connect addr {}", local_addr))?;
                 debug!("Proxy connect success {:?}", &trojan.local_addr);
 
-                tokio::io::copy_bidirectional(stream, &mut local_ts)
-                    .await
-                    .ok();
+                copy_bidirectional(stream, &mut local_ts).await.ok();
             }
             None => {
                 info!("response not found");

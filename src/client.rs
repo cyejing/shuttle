@@ -46,7 +46,7 @@ pub async fn start_proxy(cc: ClientConfig) {
     tokio::spawn(async move {
         while let Ok((ts, _)) = listener.accept().await {
             let cc = cc.clone();
-            let span = info_span!("trace", traceid = gen_traceid());
+            let span = info_span!("trace", id = gen_traceid());
             tokio::spawn(async move { proxy_handle(cc, ts).instrument(span).await });
         }
     });
