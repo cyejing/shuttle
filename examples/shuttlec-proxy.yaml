@@ -1,5 +1,5 @@
 run_type: proxy
-proxy_mode: trojan
+proxy_mode: trojan # trojan,direct,websocket
 proxy_addr: 0.0.0.0:4080
 ssl_enable: true
 invalid_certs: true

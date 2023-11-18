@@ -1,16 +1,10 @@
 use std::{str::Split, sync::Arc};
 
+use anyhow::anyhow;
 use socks5_proto::Address;
-use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 const MAX_HTTP_REQUEST_SIZE: usize = 16384;
-
-#[derive(Debug, Clone, Error)]
-pub enum HttpResult {
-    #[error("HttpConnectRequest parse failed")]
-    BadRequest,
-}
 
 pub struct HttpConnectRequest {
     pub addr: Address,
@@ -114,7 +108,7 @@ impl HttpConnectRequest {
             })
     }
 
-    fn parse_request_line(request_line: &str) -> Result<(&str, &str, &str, bool), HttpResult> {
+    fn parse_request_line(request_line: &str) -> anyhow::Result<(&str, &str, &str, bool)> {
         let request_line_items = request_line.split(' ').collect::<Vec<&str>>();
         HttpConnectRequest::precondition_well_formed(request_line, &request_line_items)?;
 
@@ -131,50 +125,50 @@ impl HttpConnectRequest {
     fn precondition_well_formed(
         request_line: &str,
         request_line_items: &[&str],
-    ) -> Result<(), HttpResult> {
+    ) -> anyhow::Result<()> {
         if request_line_items.len() != 3 {
             debug!("Bad request line: `{:?}`", request_line,);
-            Err(HttpResult::BadRequest)
+            Err(anyhow!("BadRequest"))
         } else {
             Ok(())
         }
     }
 
-    fn check_version(version: &str) -> Result<(), HttpResult> {
+    fn check_version(version: &str) -> anyhow::Result<()> {
         if version != "HTTP/1.1" {
             debug!("Bad version {}", version);
-            Err(HttpResult::BadRequest)
+            Err(anyhow!("BadRequest"))
         } else {
             Ok(())
         }
     }
 
-    fn check_method(method: &str) -> Result<bool, HttpResult> {
+    fn check_method(method: &str) -> anyhow::Result<bool> {
         Ok(method != "CONNECT")
     }
 
-    fn precondition_legal_characters(http_request: &[u8]) -> Result<(), HttpResult> {
+    fn precondition_legal_characters(http_request: &[u8]) -> anyhow::Result<()> {
         for b in http_request {
             match b {
                 // non-ascii characters don't make sense in this context
                 32..=126 | 9 | 10 | 13 => {}
                 _ => {
                     debug!("Bad request header. Illegal character: {:#04x}", b);
-                    return Err(HttpResult::BadRequest);
+                    return Err(anyhow!("BadRequest"));
                 }
             }
         }
         Ok(())
     }
 
-    fn precondition_size(http_request: &[u8]) -> Result<(), HttpResult> {
+    fn precondition_size(http_request: &[u8]) -> anyhow::Result<()> {
         if http_request.len() >= MAX_HTTP_REQUEST_SIZE {
             debug!(
                 "Bad request header. Size {} exceeds limit {}",
                 http_request.len(),
                 MAX_HTTP_REQUEST_SIZE
             );
-            Err(HttpResult::BadRequest)
+            Err(anyhow!("BadRequest"))
         } else {
             Ok(())
         }

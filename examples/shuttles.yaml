@@ -2,8 +2,6 @@ addrs:
   - addr: 0.0.0.0:4845
     cert: examples/server.crt
     key: examples/server.key
-admin:
-  addr: 127.0.0.1:4890
 trojan:
   local_addr: 127.0.0.1:80 #nginx
   passwords:

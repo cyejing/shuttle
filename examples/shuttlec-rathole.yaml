@@ -1,9 +1,9 @@
 run_type: rathole
-remote_addr: 127.0.0.1:4843
-ssl_enable: true # better to set true
+remote_addr: 127.0.0.1:4845
+ssl_enable: true
 password: 58JCEmvcBkRAk1XkK1iH
 
 holes:
-  - name: test
+  - name: ssh
     remote_addr: 127.0.0.1:4022
     local_addr: 127.0.0.1:22

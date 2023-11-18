@@ -4,8 +4,9 @@ Connect to networks without pain
 
 ## Feature
 
-- tls 加密上网
-- 内网穿透, 支持动态调整
+- 加密上网
+- 内网穿透
+- 客户端代理支持 socks5/http
 
 ## Architecture
 
@@ -28,7 +29,7 @@ Connect to networks without pain
 ```yaml
 #example/shuttles.yaml
 addrs:
-  - addr: 0.0.0.0:4843
+  - addr: 0.0.0.0:4845
     cert: examples/server.crt # 最好使用正式域名证书的方式
     key: examples/server.key
 trojan:
@@ -48,7 +49,7 @@ run_type: proxy #运行类型 代理模式
 ssl_enable: true
 invalid_certs: true
 proxy_addr: 127.0.0.1:4080 #本地代理地址
-remote_addr: 127.0.0.1:4843 #服务器地址, 最好是域名
+remote_addr: 127.0.0.1:4845 #服务器地址, 最好是域名
 password: sQtfRnfhcNoZYZh1wY9u #对应服务器密码
 ```
 
@@ -69,7 +70,7 @@ Enjoy
 ```yaml
 #example/shuttles.yaml
 addrs:
-  - addr: 0.0.0.0:4843
+  - addr: 0.0.0.0:4845
     cert: examples/server.crt
     key: examples/server.key
 rathole:
@@ -85,17 +86,20 @@ rathole:
 
 ```yaml
 run_type: rathole
-ssl_enable: false
-remote_addr: 127.0.0.1:4843
+ssl_enable: true
+remote_addr: 127.0.0.1:4845
 password: 58JCEmvcBkRAk1XkK1iH
 
 holes:
-  - name: test
+  - name: ssh
     remote_addr: 127.0.0.1:4022
     local_addr: 127.0.0.1:22
 ```
 
-
 #### 使用
 
 connect -> remote_addr -> local_addr
+
+## License
+
+GNU General Public License v3.0
