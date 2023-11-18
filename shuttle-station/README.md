@@ -1,4 +1,4 @@
-# shuttle-core
+# shuttle-station
 
 提供 trojan 协议支持及工具库
 

@@ -1,14 +1,14 @@
 use anyhow::{anyhow, Context};
-use shuttle_core::dial::{Dial, DirectDial};
-use shuttle_core::peekable::{AsyncPeek, PeekableStream};
-use shuttle_core::proto::{self, trojan};
+use shuttle_station::dial::{Dial, DirectDial};
+use shuttle_station::peekable::{AsyncPeek, PeekableStream};
+use shuttle_station::proto::{self, trojan};
 use tracing::{info_span, Instrument};
 
 use crate::config::Addr;
 use crate::gen_traceid;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::store::ServerStore;
-use shuttle_core::tls::make_tls_acceptor;
+use shuttle_station::tls::make_tls_acceptor;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;

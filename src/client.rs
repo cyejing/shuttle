@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use shuttle_core::{
+use shuttle_station::{
     dial::{DirectDial, TrojanDial, WebSocketDial},
     proxy::ProxyConnection,
     websocket::WebSocketCopyStream,

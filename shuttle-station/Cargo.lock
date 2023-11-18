@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "shuttle-core"
+name = "shuttle-station"
 version = "0.1.0"

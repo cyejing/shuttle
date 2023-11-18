@@ -13,7 +13,7 @@ use crate::rathole::cmd::hole::Hole;
 use crate::rathole::cmd::Command;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::CRLF;
-use shuttle_core::tls::{make_server_name, make_tls_connector};
+use shuttle_station::tls::{make_server_name, make_tls_connector};
 
 use self::cmd::ping::Ping;
 

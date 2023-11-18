@@ -1157,7 +1157,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
- "shuttle-core",
+ "shuttle-station",
  "time",
  "tokio",
  "tokio-rustls",
@@ -1170,7 +1170,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "shuttle-core"
+name = "shuttle-station"
 version = "0.1.0"
 dependencies = [
  "anyhow",
