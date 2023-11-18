@@ -1,20 +1,14 @@
-use std::{
-    cell::RefCell,
-    sync::{Arc, Mutex},
-};
-
 use anyhow::Context;
-use hyper::{header, server::conn, service::service_fn, Body};
 use socks5_proto::{
     handshake::{self, Method},
     Address, Command, Reply, Request as SocksRequest, Response,
 };
 use tokio::{
-    io::{copy_bidirectional, AsyncRead, AsyncWrite},
+    io::{copy_bidirectional, AsyncRead, AsyncWrite, AsyncWriteExt},
     net::TcpStream,
 };
 
-use crate::dial::Dial;
+use crate::{dial::Dial, proto::http_connect};
 
 #[derive(Debug)]
 pub struct ProxyConnection<T> {
@@ -27,7 +21,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
         Self { ts, dial }
     }
 
-    pub async fn handle(&mut self) {
+    pub async fn handle(self) {
         let mut first_bit = [0u8];
         if let Err(e) = self.ts.peek(&mut first_bit).await {
             error!("Can't peek first_bit err: {e}");
@@ -44,7 +38,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
         };
     }
 
-    async fn handle_socks(&mut self) -> anyhow::Result<()> {
+    async fn handle_socks(mut self) -> anyhow::Result<()> {
         debug!(
             "Socks proxy connection {:?} to {:?}",
             self.ts.peer_addr().ok(),
@@ -91,33 +85,50 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
         Ok(())
     }
 
-    async fn handle_http(&mut self) -> anyhow::Result<()> {
+    async fn handle_http(mut self) -> anyhow::Result<()> {
         debug!(
             "Http proxy connection {:?} to {:?}",
             self.ts.peer_addr().ok(),
             self.ts.local_addr().ok()
         );
-        let host: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-        let host_move = host.clone();
-
-        if let Err(http_err) = conn::Http::new()
-            .http1_only(true)
-            .http1_keep_alive(true)
-            .serve_connection(
-                &mut self.ts,
-                service_fn(move |req| http_connect(req, host_move.clone())),
-            )
+        let buf = http_connect::read_http_request_end(&mut self.ts)
             .await
-        {
-            error!("Error while serving HTTP connection: {}", http_err);
+            .context("Http proxy read http request end failed")?;
+        info!(
+            "Http proxy read buf: \n{}",
+            String::from_utf8_lossy(buf.as_slice())
+        );
+        match http_connect::HttpConnectRequest::parse(buf.as_slice()) {
+            Ok(req) => {
+                let mut target = TcpStream::connect(&req.host)
+                    .await
+                    .context(format!("Http proxy connect addr {} failed", req.host))?;
+                info!("Http proxy connect {}", req.host);
+
+                if let Some(data) = req.nugget {
+                    target
+                        .write_all(&data.data())
+                        .await
+                        .context("Http proxy target write_all buf failed")?;
+                } else {
+                    self.ts
+                        .write("HTTP/1.1 200 OK\r\n\r\n".as_bytes())
+                        .await
+                        .context("Http proxy write response failed")?;
+                }
+
+                if let Ok((a, b)) = copy_bidirectional(&mut self.ts, &mut target).await {
+                    info!("Http proxy copy {} end {}={}", req.host, a, b);
+                }
+            }
+            Err(_e) => {
+                error!("Http proxy BAD_REQUEST");
+                self.ts
+                    .write("HTTP/1.1 400 BAD_REQUEST\r\n\r\n".as_bytes())
+                    .await
+                    .context("Http proxy write response failed")?;
+            }
         }
-
-        // todo
-        // if let Some(host) = host.lock().unwrap().take() {
-        let mut target = TcpStream::connect("www.baidu.com:443").await.unwrap();
-        copy_bidirectional(&mut target, &mut self.ts).await.ok();
-        // }
-
         Ok(())
     }
 
@@ -127,22 +138,6 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
             .await
             .context("Scoks write reply response failed")
     }
-}
-
-async fn http_connect(
-    req: hyper::Request<Body>,
-    host_call: Arc<Mutex<Option<String>>>,
-) -> anyhow::Result<hyper::Response<String>> {
-    if let Some(host) = req
-        .headers()
-        .get(header::HOST)
-        .and_then(|h| h.to_str().ok())
-    {
-        info!("{},{},{}", req.method(), req.uri(), host);
-        let _ = host_call.lock().unwrap().insert(host.to_string());
-    }
-
-    Ok(hyper::Response::new("hi".to_string()))
 }
 
 #[cfg(test)]

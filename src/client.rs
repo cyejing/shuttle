@@ -32,7 +32,10 @@ pub async fn start_rathole(cc: ClientConfig) {
 }
 
 pub async fn start_proxy(cc: ClientConfig) {
-    info!("Run with proxy use mode {}", cc.proxy_mode);
+    info!(
+        "Run with proxy @{} use mode {}",
+        cc.proxy_addr, cc.proxy_mode
+    );
     let listener = TcpListener::bind(&cc.proxy_addr)
         .await
         .unwrap_or_else(|e| panic!("Can't Listen socks addr {}. err: {e}", cc.proxy_addr));

@@ -1177,7 +1177,6 @@ dependencies = [
  "async-trait",
  "bytes",
  "futures",
- "hyper",
  "log",
  "rustls",
  "rustls-pemfile",
