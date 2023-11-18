@@ -20,5 +20,5 @@ check:
 	cargo clippy -- -D warnings
 
 publish:
-	cargo publish --registry crates-io
+	cargo publish --registry crates-io --manifest-path shuttle-station/Cargo.toml
 
