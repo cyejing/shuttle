@@ -3,11 +3,9 @@ use std::{sync::Arc, time::Duration};
 use shuttle_station::{
     dial::{DirectDial, TrojanDial, WebSocketDial},
     proxy::ProxyConnection,
-    websocket::WebSocketCopyStream,
 };
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
-use tokio_tungstenite::MaybeTlsStream;
 use tracing::{info_span, Instrument};
 
 use crate::{config::ClientConfig, gen_traceid, rathole};
@@ -55,14 +53,14 @@ pub async fn start_proxy(cc: ClientConfig) {
 async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
     match (cc.proxy_mode.as_str(), cc.ssl_enable) {
         ("direct", _) => {
-            ProxyConnection::<TcpStream>::new(ts, Box::<DirectDial>::default())
+            ProxyConnection::new(ts, Box::<DirectDial>::default())
                 .handle()
                 .await;
         }
         ("trojan", false) => {
             ProxyConnection::<TcpStream>::new(
                 ts,
-                Box::<TrojanDial>::new(TrojanDial::new(
+                Box::new(TrojanDial::new(
                     cc.remote_addr.clone(),
                     cc.hash.clone(),
                     cc.invalid_certs,
@@ -74,7 +72,7 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
         ("trojan", true) => {
             ProxyConnection::<TlsStream<TcpStream>>::new(
                 ts,
-                Box::<TrojanDial>::new(TrojanDial::new(
+                Box::new(TrojanDial::new(
                     cc.remote_addr.clone(),
                     cc.hash.clone(),
                     cc.invalid_certs,
@@ -84,12 +82,9 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
             .await;
         }
         ("websocket", _) => {
-            ProxyConnection::<WebSocketCopyStream<MaybeTlsStream<TcpStream>>>::new(
+            ProxyConnection::new(
                 ts,
-                Box::<WebSocketDial>::new(WebSocketDial::new(
-                    cc.remote_addr.clone(),
-                    cc.hash.clone(),
-                )),
+                Box::new(WebSocketDial::new(cc.remote_addr.clone(), cc.hash.clone())),
             )
             .handle()
             .await;

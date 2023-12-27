@@ -29,7 +29,9 @@ pub fn init_log() {
         );
     let stdout = layer()
         .with_timer(timer.clone())
-        .with_line_number(true)
+        .with_ansi(false)
+        .with_file(false)
+        .with_target(false)
         .with_filter(default_env_filter());
 
     tracing_subscriber::registry()
