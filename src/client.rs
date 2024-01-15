@@ -1,14 +1,18 @@
 use std::{sync::Arc, time::Duration};
 
 use shuttle_station::{
-    dial::{DirectDial, TrojanDial, WebSocketDial},
+    dial::{Dial, DirectDial, TrojanDial, WebSocketDial},
     proxy::ProxyConnection,
+    Address,
 };
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
 use tracing::{info_span, Instrument};
 
-use crate::{config::ClientConfig, gen_traceid, rathole};
+use crate::{
+    config::{ClientConfig, ProxyMode},
+    gen_traceid, rathole,
+};
 
 pub async fn start_rathole(cc: ClientConfig) {
     info!("Run with rathole");
@@ -32,7 +36,7 @@ pub async fn start_rathole(cc: ClientConfig) {
 
 pub async fn start_proxy(cc: ClientConfig) {
     info!(
-        "Run with proxy @{} use mode {}",
+        "Run with proxy @{} use mode {:?}",
         cc.proxy_addr, cc.proxy_mode
     );
     let listener = TcpListener::bind(&cc.proxy_addr)
@@ -41,6 +45,9 @@ pub async fn start_proxy(cc: ClientConfig) {
 
     let cc = Arc::new(cc);
 
+    if cc.proxy_mode == ProxyMode::Websocket {
+        websocket_heartbeat_open(cc.remote_addr.clone(), cc.hash.clone());
+    }
     tokio::spawn(async move {
         while let Ok((ts, _)) = listener.accept().await {
             let cc = cc.clone();
@@ -51,13 +58,13 @@ pub async fn start_proxy(cc: ClientConfig) {
 }
 
 async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
-    match (cc.proxy_mode.as_str(), cc.ssl_enable) {
-        ("direct", _) => {
+    match (&cc.proxy_mode, cc.ssl_enable) {
+        (ProxyMode::Direct, _) => {
             ProxyConnection::new(ts, Box::<DirectDial>::default())
                 .handle()
                 .await;
         }
-        ("trojan", false) => {
+        (ProxyMode::Trojan, false) => {
             ProxyConnection::<TcpStream>::new(
                 ts,
                 Box::new(TrojanDial::new(
@@ -69,7 +76,7 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
             .handle()
             .await;
         }
-        ("trojan", true) => {
+        (ProxyMode::Trojan, true) => {
             ProxyConnection::<TlsStream<TcpStream>>::new(
                 ts,
                 Box::new(TrojanDial::new(
@@ -81,7 +88,7 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
             .handle()
             .await;
         }
-        ("websocket", _) => {
+        (ProxyMode::Websocket, _) => {
             ProxyConnection::new(
                 ts,
                 Box::new(WebSocketDial::new(cc.remote_addr.clone(), cc.hash.clone())),
@@ -89,8 +96,18 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
             .handle()
             .await;
         }
-        _ => {
-            panic!("unknown proxy_mode or ssl_enable")
-        }
     };
+}
+
+fn websocket_heartbeat_open(remote_addr: String, hash: String) {
+    tokio::spawn(async move {
+        loop {
+            let ws_dial = WebSocketDial::new(remote_addr.clone(), hash.clone());
+            let domain = "www.google.com";
+            let address = Address::DomainAddress(domain.as_bytes().to_vec(), 443);
+            let wss = ws_dial.dial(address).await.ok();
+            info!("heartbeat dial {}", wss.is_some());
+            tokio::time::sleep(Duration::from_secs(30)).await
+        }
+    });
 }

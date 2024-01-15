@@ -20,7 +20,7 @@ pub struct ClientConfig {
     ///  proxy, rathole
     pub run_type: String,
     #[serde(default = "default_proxy_mode")]
-    pub proxy_mode: String,
+    pub proxy_mode: ProxyMode,
     pub remote_addr: String,
     pub password: String,
     #[serde(skip)]
@@ -68,6 +68,17 @@ pub struct Hole {
     pub name: String,
     pub remote_addr: String,
     pub local_addr: String,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProxyMode {
+    #[serde(alias = "direct")]
+    Direct,
+    #[serde(alias = "trojan")]
+    #[default]
+    Trojan,
+    #[serde(alias = "websocket")]
+    Websocket,
 }
 
 const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["shuttles.yaml", "examples/shuttles.yaml"];
@@ -218,8 +229,8 @@ fn default_false() -> bool {
     false
 }
 
-fn default_proxy_mode() -> String {
-    String::from("trojan")
+fn default_proxy_mode() -> ProxyMode {
+    ProxyMode::Trojan
 }
 
 #[cfg(test)]
