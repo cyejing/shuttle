@@ -170,7 +170,7 @@ mod tests {
     use crate::rathole::dispatcher::{CommandRead, CommandWrite};
 
     pub fn new_command_read(buf: &mut Vec<u8>) -> CommandRead<Cursor<Vec<u8>>> {
-        let (r, _w) = tokio::io::split(Cursor::new(Vec::from(buf.as_slice().clone())));
+        let (r, _w) = tokio::io::split(Cursor::new(Vec::from(buf.as_slice())));
         CommandRead::new(r)
     }
 

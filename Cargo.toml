@@ -19,7 +19,6 @@ tracing="0.1"
 tracing-appender="0.2"
 tracing-subscriber = {version = "0.3" ,features=["local-time","env-filter"]}
 time = {version="0.3", features=["local-offset","macros"]}
-async-trait = "0.1"
 anyhow = { version = "1" }
 
 tokio = { version = "1.29", features = ["full"] }

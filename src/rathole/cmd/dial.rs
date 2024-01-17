@@ -3,7 +3,6 @@ use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
 use crate::rathole::context::{ConnSender, Context};
 use crate::rathole::exchange_copy;
 use crate::rathole::frame::{Frame, Parse};
-use async_trait::async_trait;
 use bytes::Bytes;
 use std::sync::Arc;
 use tokio::net::TcpStream;
@@ -41,7 +40,6 @@ impl CommandTo for Dial {
     }
 }
 
-#[async_trait]
 impl CommandApply for Dial {
     async fn apply(&self, context: Context) -> anyhow::Result<Option<Resp>> {
         let dial_conn = DialConn::new(self.conn_id, self.addr.clone());

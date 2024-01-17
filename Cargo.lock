@@ -1143,7 +1143,6 @@ name = "shuttle"
 version = "0.6.3"
 dependencies = [
  "anyhow",
- "async-trait",
  "atoi",
  "base16ct",
  "bytes",

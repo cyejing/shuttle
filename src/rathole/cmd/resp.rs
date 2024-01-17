@@ -1,5 +1,4 @@
 use anyhow::anyhow;
-use async_trait::async_trait;
 use bytes::Bytes;
 
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
@@ -41,7 +40,6 @@ impl CommandTo for Resp {
     }
 }
 
-#[async_trait]
 impl CommandApply for Resp {
     async fn apply(&self, context: Context) -> anyhow::Result<Option<Resp>> {
         let rc = context.get_req().await;

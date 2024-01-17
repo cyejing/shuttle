@@ -2,7 +2,6 @@ use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
 use crate::rathole::context::Context;
 use crate::rathole::frame::{Frame, Parse, ParseError};
-use async_trait::async_trait;
 use bytes::Bytes;
 
 #[derive(Debug, Default)]
@@ -38,7 +37,6 @@ impl CommandTo for Ping {
     }
 }
 
-#[async_trait]
 impl CommandApply for Ping {
     async fn apply(&self, _context: Context) -> anyhow::Result<Option<Resp>> {
         let resp = match self.msg.clone() {

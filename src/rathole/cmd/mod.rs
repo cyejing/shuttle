@@ -7,7 +7,6 @@ use crate::rathole::cmd::unknown::Unknown;
 use crate::rathole::context::Context;
 use crate::rathole::frame::{Frame, Parse};
 use anyhow::anyhow;
-use async_trait::async_trait;
 use std::fmt::Debug;
 
 pub mod dial;
@@ -82,8 +81,7 @@ pub trait CommandParse<T> {
     fn parse_frame(parse: &mut Parse) -> anyhow::Result<T>;
 }
 
-#[async_trait]
-pub trait CommandApply {
+pub(crate) trait CommandApply {
     async fn apply(&self, context: Context) -> anyhow::Result<Option<Resp>>;
 }
 

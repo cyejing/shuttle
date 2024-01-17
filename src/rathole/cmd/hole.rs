@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use bytes::Bytes;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
@@ -47,7 +46,6 @@ impl CommandTo for Hole {
     }
 }
 
-#[async_trait]
 impl CommandApply for Hole {
     async fn apply(&self, context: context::Context) -> anyhow::Result<Option<Resp>> {
         let hole_server = HoleServer::new(
