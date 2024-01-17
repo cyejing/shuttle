@@ -38,7 +38,8 @@ impl CommandTo for Ping {
 }
 
 impl CommandApply for Ping {
-    async fn apply(&self, _context: Context) -> anyhow::Result<Option<Resp>> {
+    async fn apply(&self, context: Context) -> anyhow::Result<Option<Resp>> {
+        info!("recv ping by {}", context.get_conn_id());
         let resp = match self.msg.clone() {
             None => Resp::Ok("PONG".to_string()),
             Some(msg) => Resp::Ok(msg),

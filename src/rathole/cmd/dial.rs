@@ -4,7 +4,6 @@ use crate::rathole::context::{ConnSender, Context};
 use crate::rathole::exchange_copy;
 use crate::rathole::frame::{Frame, Parse};
 use bytes::Bytes;
-use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
@@ -66,7 +65,7 @@ impl DialConn {
 
         tokio::spawn(async move {
             let (tx, rx) = mpsc::channel(1);
-            let conn_sender = Arc::new(ConnSender::new(conn_id, tx));
+            let conn_sender = ConnSender::new(conn_id, tx);
             context.with_conn_id(conn_id);
             context.set_conn_sender(conn_sender).await;
             if let Err(e) = exchange_copy(stream, rx, context.clone()).await {

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use bytes::Bytes;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
@@ -104,7 +102,7 @@ impl HoleServer {
             let (tx, rx) = mpsc::channel(1);
 
             let conn_id = self.id_adder.add_and_get().await;
-            let conn_sender = Arc::new(ConnSender::new(conn_id, tx));
+            let conn_sender = ConnSender::new(conn_id, tx);
             self.context.set_conn_sender(conn_sender).await;
 
             let mut context = self.context.clone();

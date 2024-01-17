@@ -9,15 +9,15 @@ use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
 #[derive(Debug, Clone)]
 pub struct Context {
     pub notify_shutdown: broadcast::Sender<()>,
-    pub command_sender: Arc<CommandSender>,
-    pub conn_map: Arc<Mutex<HashMap<u64, Arc<ConnSender>>>>,
+    pub command_sender: CommandSender,
+    pub conn_map: Arc<Mutex<HashMap<u64, ConnSender>>>,
     pub req_map: Arc<Mutex<HashMap<u64, ReqChannel>>>,
     pub current_req_id: Option<u64>,
     pub current_conn_id: Option<u64>,
 }
 
 impl Context {
-    pub fn new(command_sender: Arc<CommandSender>) -> Self {
+    pub fn new(command_sender: CommandSender) -> Self {
         let (notify_shutdown, _) = broadcast::channel(1);
 
         Context {
@@ -60,12 +60,15 @@ impl Context {
         }
     }
 
-    pub(crate) async fn set_conn_sender(&self, sender: Arc<ConnSender>) {
+    pub(crate) async fn set_conn_sender(&self, sender: ConnSender) {
         trace!("Context set conn sender {:?}", sender);
-        self.conn_map.lock().await.insert(sender.conn_id, sender);
+        self.conn_map
+            .lock()
+            .await
+            .insert(sender.get_conn_id(), sender);
     }
 
-    pub(crate) async fn get_conn_sender(&self) -> Option<Arc<ConnSender>> {
+    pub(crate) async fn get_conn_sender(&self) -> Option<ConnSender> {
         trace!("Context get conn sender {:?}", self.current_conn_id);
         match &self.current_conn_id {
             Some(conn_id) => self.conn_map.lock().await.get(conn_id).cloned(),
@@ -94,19 +97,31 @@ impl Context {
 
 #[derive(Debug, Clone)]
 pub struct ConnSender {
+    inner: Arc<ConnInner>,
+}
+
+#[derive(Debug)]
+struct ConnInner {
     pub conn_id: u64,
     pub sender: mpsc::Sender<Bytes>,
 }
 
 impl ConnSender {
     pub fn new(conn_id: u64, sender: mpsc::Sender<Bytes>) -> Self {
-        ConnSender { conn_id, sender }
+        ConnSender {
+            inner: Arc::new(ConnInner { conn_id, sender }),
+        }
+    }
+
+    pub fn get_conn_id(&self) -> u64 {
+        self.inner.conn_id
     }
 
     pub async fn send(&self, byte: Bytes) -> anyhow::Result<()> {
         use anyhow::Context;
 
-        self.sender
+        self.inner
+            .sender
             .send(byte)
             .await
             .context("Can't send byte to conn channel")
@@ -116,6 +131,11 @@ impl ConnSender {
 /// command sender
 #[derive(Debug, Clone)]
 pub struct CommandSender {
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
     pub hash: String,
     pub sender: mpsc::Sender<CommandChannel>,
     id_adder: IdAdder,
@@ -124,20 +144,26 @@ pub struct CommandSender {
 impl CommandSender {
     pub fn new(hash: String, sender: mpsc::Sender<CommandChannel>) -> Self {
         CommandSender {
-            hash,
-            sender,
-            id_adder: IdAdder::default(),
+            inner: Arc::new(Inner {
+                hash,
+                sender,
+                id_adder: IdAdder::default(),
+            }),
         }
     }
 
+    pub fn get_hash(&self) -> String {
+        self.inner.hash.clone()
+    }
+
     pub async fn send_with_id(&self, req_id: u64, cmd: Command) -> anyhow::Result<()> {
-        Ok(self.sender.send((req_id, cmd, None)).await?)
+        Ok(self.inner.sender.send((req_id, cmd, None)).await?)
     }
 
     pub async fn send_sync(&self, cmd: Command) -> anyhow::Result<()> {
         let (tx, rx) = oneshot::channel();
-        let req_id = self.id_adder.add_and_get().await;
-        self.sender.send((req_id, cmd, Some(tx))).await?;
+        let req_id = self.inner.id_adder.add_and_get().await;
+        self.inner.sender.send((req_id, cmd, Some(tx))).await?;
         trace!("send_sync {} send", req_id);
         match rx.await? {
             Ok(_) => {

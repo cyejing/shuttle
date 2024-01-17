@@ -100,8 +100,8 @@ where
 
         let hash_str = String::from_utf8(head).context("Trojan hash to string failed")?;
 
-        let trojan = self.store.trojan.clone();
-        let rathole = self.store.rathole.clone();
+        let trojan = self.store.get_trojan();
+        let rathole = self.store.get_rahole();
 
         if trojan.password_hash.contains_key(&hash_str) {
             debug!("detect trojan {}", hash_str);
@@ -148,7 +148,7 @@ where
 
     async fn handle_proxy(&mut self) -> anyhow::Result<()> {
         let stream = &mut self.inner;
-        let trojan = self.store.trojan.clone();
+        let trojan = self.store.get_trojan();
 
         match trojan.local_addr {
             Some(ref local_addr) => {

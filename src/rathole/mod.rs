@@ -5,7 +5,7 @@ use bytes::{Bytes, BytesMut};
 use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::config::ClientConfig;
 use crate::rathole::cmd::exchange::Exchange;
@@ -58,48 +58,36 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 
     let (mut dispatcher, command_sender) = Dispatcher::new(stream, cc.hash);
 
-    let (tx, mut rx) = broadcast::channel(1);
-    let dispatch = tokio::spawn(async move {
-        tokio::select!(
-            r = dispatcher.dispatch() => r,
-            _r2 = rx.recv() => Ok(()),
-        )
-    });
+    let (sx, rx) = oneshot::channel();
+    tokio::spawn(async move { sx.send(dispatcher.dispatch().await) });
 
-    let hcs = command_sender.clone();
-    let heartbeat = tokio::spawn(async move {
-        // 每隔10分钟断开连接,防止墙检测
+    let command_sender_cloned = command_sender.clone();
+    tokio::spawn(async move {
         let mut last_ping = 10 * 60;
         loop {
             if last_ping > 0 {
-                hcs.send_sync(Command::Ping(Ping::new(None))).await?;
+                command_sender_cloned
+                    .send_sync(Command::Ping(Ping::new(None)))
+                    .await
+                    .ok();
                 last_ping -= 10;
             } else {
                 break;
             }
             tokio::time::sleep(Duration::from_secs(10)).await;
         }
-        Ok(())
     });
 
     for hole in cc.holes {
         let open_proxy =
             Command::Hole(Hole::new(hole.remote_addr.clone(), hole.local_addr.clone()));
-        if let Err(e) = command_sender.send_sync(open_proxy).await {
-            tx.send(()).ok();
-            return Err(e);
-        } else {
-            info!(
-                "open proxy for [remote:{}], [local:{}]",
-                hole.remote_addr, hole.local_addr
-            );
-        }
+        command_sender.send_sync(open_proxy).await?;
+        info!(
+            "open proxy for [remote:{}], [local:{}]",
+            hole.remote_addr, hole.local_addr
+        );
     }
-
-    tokio::select!(
-        r = dispatch => r?,
-        r2 = heartbeat => r2?,
-    )
+    rx.await?
 }
 
 async fn exchange_copy(
