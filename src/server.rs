@@ -13,17 +13,15 @@ use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWr
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
 
-pub async fn start_server(addr: Addr, store: ServerStore) {
-    let addr_str = addr.addr;
-    let listener = TcpListener::bind(&addr_str)
+pub async fn start_server(addr: &Addr, store: ServerStore) {
+    let addr_str = &addr.addr;
+    let listener = TcpListener::bind(addr_str)
         .await
         .context(format!("Can't bind server port {}", addr_str))
         .unwrap();
-    info!("Server listener addr : {}", &addr_str);
+    info!("Server listener addr : {}", addr_str);
     let acceptor = if addr.ssl_enable {
-        let cert_loaded = addr.cert_loaded;
-        let mut key_loaded = addr.key_loaded;
-        Some(make_tls_acceptor(cert_loaded, key_loaded.remove(0)))
+        make_tls_acceptor(addr.cert_loaded.clone(), addr.key_loaded.as_ref())
     } else {
         None
     };

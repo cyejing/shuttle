@@ -1,6 +1,6 @@
 [package]
 name = "shuttle"
-version = "0.6.4"
+version = "0.6.5"
 edition = "2021"
 publish = false
 
@@ -9,38 +9,62 @@ members = [
     "shuttle-station",
 ]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-shuttle-station = {path="shuttle-station"}
-
-log = "0.4"
+[workspace.dependencies]
+log = {version="0.4", features=["kv_unstable_serde"]}
 tracing="0.1"
 tracing-appender="0.2"
 tracing-subscriber = {version = "0.3" ,features=["local-time","env-filter"]}
 time = {version="0.3", features=["local-offset","macros"]}
 anyhow = { version = "1" }
 
-tokio = { version = "1.29", features = ["full"] }
+tokio = { version = "1", features=["full"]}
+tokio-rustls = "0.25"
+rustls-pemfile = "2"
+webpki-roots = "0.26"
+tokio-tungstenite = {version="0.21", features=["rustls-tls-webpki-roots"]}
 bytes = {version="1.4.0",default-features = false, features=["std"]}
-
-tokio-rustls = "0.24"
-rustls = { version = "0.21.0", default-features = false, features=["dangerous_configuration"] }
-rustls-pemfile = "1"
-webpki-roots = "0.25"
 
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1"
-
 sha2 = "0.10"
 base16ct = { version = "0.2", features = ["alloc"] }
 atoi = "2"
 itertools = "0.12.0"
 uuid = {version="1.5.0", features=["v4"]}
+futures= { version = "0.3"}
+socks5-proto = "0.4.0"
 
-tokio-tungstenite = {version="0.20", features=["rustls-tls-webpki-roots"]}
+[dependencies]
+shuttle-station = {path="shuttle-station"}
+
+log = {workspace = true}
+tracing= {workspace = true}
+tracing-appender= {workspace = true}
+tracing-subscriber = {workspace = true}
+time = {workspace = true}
+anyhow = {workspace = true}
+
+tokio = {workspace = true}
+tokio-rustls = {workspace = true}
+# rustls = {workspace = true}
+rustls-pemfile = {workspace = true}
+webpki-roots = {workspace = true}
+tokio-tungstenite = {workspace = true}
+bytes = {workspace = true}
+
+clap = {workspace = true}
+serde = {workspace = true}
+serde_yaml = {workspace = true}
+serde_json = {workspace = true}
+sha2 = {workspace = true}
+base16ct = {workspace = true}
+atoi = {workspace = true}
+itertools = {workspace = true}
+uuid = {workspace = true}
+futures= {workspace = true}
+
 
 [dev-dependencies]
 reqwest = { version = "0.11", default-features=false, features = ["socks","rustls-tls"] }

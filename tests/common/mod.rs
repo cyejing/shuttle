@@ -33,7 +33,7 @@ pub async fn start_server(path: &str) {
 
     let store = ServerStore::from(&config);
     let addr = config.addrs.get(0).unwrap();
-    shuttle::server::start_server(addr.clone(), store.clone()).await;
+    shuttle::server::start_server(&addr, store.clone()).await;
 }
 
 #[allow(dead_code)]

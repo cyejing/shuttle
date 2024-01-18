@@ -13,18 +13,19 @@ repository = "https://github.com/cyejing/shuttle"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = {version="0.4", features=["kv_unstable_serde"]}
-tokio = { version = "1"}
-anyhow = { version = "1" }
+log = {workspace = true}
+tokio = {workspace = true}
+anyhow = {workspace = true}
+
+tokio-rustls = {workspace = true}
+# rustls = {workspace = true}
+rustls-pemfile = {workspace = true}
+webpki-roots = {workspace = true}
+tokio-tungstenite = {workspace = true}
+futures= {workspace = true}
+bytes = {workspace = true}
+
+socks5-proto = {workspace = true}
+
 async-trait = "0.1"
 
-tokio-rustls = "0.24"
-rustls = { version = "0.21.0", default-features = false, features=["dangerous_configuration"] }
-rustls-pemfile = "1"
-webpki-roots = "0.25"
-
-tokio-tungstenite = {version="0.20", features=["rustls-tls-webpki-roots"]}
-futures= { version = "0.3"}
-bytes = {version="1.4.0",default-features = false, features=["std"]}
-
-socks5-proto = "0.4.0"

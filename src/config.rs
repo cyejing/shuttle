@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha224};
-use tokio_rustls::rustls;
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ServerConfig {
     pub addrs: Vec<Addr>,
     pub trojan: Trojan,
@@ -35,7 +35,7 @@ pub struct ClientConfig {
     pub holes: Vec<Hole>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Addr {
     pub addr: String,
     pub cert: Option<String>,
@@ -43,9 +43,9 @@ pub struct Addr {
     #[serde(skip)]
     pub ssl_enable: bool,
     #[serde(skip)]
-    pub cert_loaded: Vec<rustls::Certificate>,
+    pub cert_loaded: Option<Vec<CertificateDer<'static>>>,
     #[serde(skip)]
-    pub key_loaded: Vec<rustls::PrivateKey>,
+    pub key_loaded: Option<PrivateKeyDer<'static>>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,10 +91,10 @@ impl ServerConfig {
             .context("Can't serde read config file")
             .unwrap();
         for addr in &mut sc.addrs {
-            if addr.cert.is_some() && addr.key.is_some() {
+            if let (Some(key), Some(cert)) = (&addr.key, &addr.cert) {
                 addr.ssl_enable = true;
-                addr.cert_loaded = load_certs(addr.cert.as_ref().unwrap());
-                addr.key_loaded = vec![load_private_key(addr.key.as_ref().unwrap())];
+                addr.cert_loaded = Some(load_certs(cert).expect("load_certs failed"));
+                addr.key_loaded = Some(load_private_key(key).expect("load_private_key falied"));
             }
         }
         for password in &sc.trojan.passwords {
@@ -184,41 +184,23 @@ pub fn sha224(password: &str) -> String {
     result
 }
 
-pub fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
+pub fn load_certs(filename: &str) -> std::io::Result<Vec<CertificateDer<'static>>> {
     let cert_file = File::open(filename)
         .context(format!("Can't open certificate file {}", filename))
         .unwrap();
     let mut reader = BufReader::new(cert_file);
-    rustls_pemfile::certs(&mut reader)
-        .context(format!("Can't load cert file {}", filename))
-        .unwrap()
-        .iter()
-        .map(|v| rustls::Certificate(v.clone()))
-        .collect()
+    rustls_pemfile::certs(&mut reader).collect()
 }
 
-pub fn load_private_key(filename: &str) -> rustls::PrivateKey {
+pub fn load_private_key(filename: &str) -> std::io::Result<PrivateKeyDer<'static>> {
     let keyfile = File::open(filename)
-        .context(format!("Can't open private key file {}", filename))
-        .unwrap();
+        .unwrap_or_else(|e| panic!("Can't open private key file {filename}. {e}"));
     let mut reader = BufReader::new(keyfile);
-
-    loop {
-        match rustls_pemfile::read_one(&mut reader)
-            .context("Can't parse private key .pem file")
-            .unwrap()
-        {
-            Some(rustls_pemfile::Item::RSAKey(key)) => return rustls::PrivateKey(key),
-            Some(rustls_pemfile::Item::PKCS8Key(key)) => return rustls::PrivateKey(key),
-            None => break,
-            _ => {}
-        }
-    }
-
-    panic!(
-        "no keys found in {:?} (encrypted keys not supported)",
-        filename
-    );
+    let x = rustls_pemfile::rsa_private_keys(&mut reader)
+        .next()
+        .unwrap()
+        .map(Into::into);
+    x
 }
 
 fn default_true() -> bool {

@@ -22,7 +22,7 @@ async fn main() {
     let config = ServerConfig::load(args.config_path);
     let store = ServerStore::from(&config);
     for addr in config.addrs {
-        start_server(addr.clone(), store.clone()).await;
+        start_server(&addr, store.clone()).await;
     }
 
     tokio::signal::ctrl_c().await.expect("shut down");
