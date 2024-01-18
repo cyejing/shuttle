@@ -7,8 +7,6 @@ use tokio_rustls::rustls::{
     ClientConfig, RootCertStore, ServerConfig, SignatureScheme,
 };
 
-// use tokio_rustls::rustls::{Certificate, OwnedTrustAnchor, PrivateKey};
-
 pub fn make_tls_acceptor(
     certs: Option<Vec<CertificateDer<'static>>>,
     key: Option<&PrivateKeyDer<'static>>,

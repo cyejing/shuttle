@@ -13,7 +13,26 @@ Connect to networks without pain
 
 ## Architecture
 
-![architecture](/docs/pic/architecture.png)
+         ┌──────┐        ┌──────┐
+         │ user │        │ user │
+         └──┬───┘        └──┬───┘
+            │               │
+            │          ┌────▼─────┐
+            │          │  local   │
+            │          │ shuttlec │
+            │          └────┬─────┘
+            │               │
+    ┌───────▼───────────────▼────────┐
+    │                                │
+    │     public server shuttles     │
+    │                                │
+    └───────┬───────────────┬────────┘
+            │               │
+            │               │
+       ┌────▼─────┐    ┌────▼─────┐
+       │   LAN    │    │ internet │
+       │ shuttlec │    └──────────┘
+       └──────────┘
 
 ## Download
 
