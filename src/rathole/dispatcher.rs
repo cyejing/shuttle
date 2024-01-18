@@ -70,12 +70,12 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
 
     pub async fn dispatch(&mut self) -> anyhow::Result<()> {
         tokio::select! {
-            r1 = Self::apply_command(
+            r1 = Self::stream_command(
                 &mut self.command_read,
                 &mut self.heartbeat_sender,
                 self.context.clone(),
             ) => r1,
-            r2 = Self::recv_command(
+            r2 = Self::channel_command(
                 &mut self.command_write,
                 &mut self.receiver,
                 self.context.clone(),
@@ -84,7 +84,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
         }
     }
 
-    async fn apply_command(
+    async fn stream_command(
         command_read: &mut CommandRead<T>,
         heartbead_sender: &mut mpsc::Sender<()>,
         context: context::Context,
@@ -113,7 +113,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
         }
     }
 
-    async fn recv_command(
+    async fn channel_command(
         command_write: &mut CommandWrite<T>,
         receiver: &mut mpsc::Receiver<CommandChannel>,
         context: context::Context,

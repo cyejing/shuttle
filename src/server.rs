@@ -181,7 +181,6 @@ where
         self.store.set_cmd_sender(cs).await;
 
         dispatcher.dispatch().await.ok();
-        drop(dispatcher);
 
         self.store.remove_cmd_sender(&hash_str).await;
         Ok(())

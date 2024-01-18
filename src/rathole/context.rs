@@ -80,8 +80,7 @@ impl Context {
         trace!("Context remove conn sender {:?}", self.current_conn_id);
         match &self.current_conn_id {
             Some(conn_id) => {
-                let discard = self.conn_map.lock().await.remove(conn_id);
-                drop(discard);
+                let _discard = self.conn_map.lock().await.remove(conn_id);
             }
             None => panic!("context current conn id is empty"),
         }

@@ -63,8 +63,7 @@ impl ServerStore {
     }
 
     pub(crate) async fn remove_cmd_sender(&self, hash: &String) {
-        let r = self.inner.cmd_map.write().await.remove(hash);
-        drop(r);
+        let _r = self.inner.cmd_map.write().await.remove(hash);
     }
 }
 
