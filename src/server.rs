@@ -122,15 +122,14 @@ where
             .context("Trojan request read failed")?;
         let addr = req.address.clone();
 
-        info!("Trojan Requested to {}", addr);
+        debug!("Trojan start connect {addr}");
 
         let mut remote_ts = DirectDial::default()
-            .dial(addr)
+            .dial(addr.clone())
             .await
             .context(format!("Trojan connect remote addr {} failed", req.address))?;
 
-        debug!("Trojan connect success {}", req.address);
-
+        info!("Trojan Requested to {}", addr);
         if let Ok((a, b)) = copy_bidirectional(stream, &mut remote_ts).await {
             info!(
                 "Trojan copy end for {} traffic: {}<=>{} total: {}",
