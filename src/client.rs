@@ -103,10 +103,9 @@ fn websocket_heartbeat_open(remote_addr: String, hash: String) {
     tokio::spawn(async move {
         loop {
             let ws_dial = WebSocketDial::new(remote_addr.clone(), hash.clone());
-            let domain = "www.google.com";
-            let address = Address::DomainAddress(domain.as_bytes().to_vec(), 443);
+            let address = Address::DomainAddress("api.shuttle.rs".as_bytes().to_vec(), 443);
             let wss = ws_dial.dial(address).await.ok();
-            info!("heartbeat dial {}", wss.is_some());
+            info!("heartbeat dial {remote_addr} [{}]", wss.is_some());
             tokio::time::sleep(Duration::from_secs(30)).await
         }
     });
