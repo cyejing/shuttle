@@ -45,9 +45,6 @@ pub async fn start_proxy(cc: ClientConfig) {
 
     let cc = Arc::new(cc);
 
-    if cc.proxy_mode == ProxyMode::Websocket {
-        websocket_heartbeat_open(cc.remote_addr.clone(), cc.hash.clone());
-    }
     tokio::spawn(async move {
         while let Ok((ts, _)) = listener.accept().await {
             let cc = cc.clone();
@@ -99,6 +96,7 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
     };
 }
 
+#[allow(dead_code)]
 fn websocket_heartbeat_open(remote_addr: String, hash: String) {
     tokio::spawn(async move {
         loop {
