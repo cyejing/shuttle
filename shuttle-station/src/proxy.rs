@@ -63,8 +63,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
 
         let addr = req.address;
 
-        info!("Requested socks connection to: {addr}");
-
+        debug!("Start connect {addr}");
         match req.command {
             Command::Connect => {
                 let target = self.dial.dial(addr.clone()).await;
@@ -73,6 +72,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
                         self.socks_reply(Reply::Succeeded, Address::unspecified())
                             .await?;
 
+                        info!("Requested socks connection to: {addr}");
                         if let Ok((a, b)) = copy_bidirectional(&mut self.ts, &mut target).await {
                             debug!(
                                 "Socks copy end for {} traffic: {}<=>{} total: {}",
@@ -118,7 +118,6 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
         match http_connect::HttpConnectRequest::parse(buf.as_slice()) {
             Ok(req) => {
                 let addr = req.addr;
-                info!("Http proxy connect {}", addr);
                 let mut target = self
                     .dial
                     .dial(addr.clone())
@@ -141,6 +140,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> ProxyConnection<T> {
                         .context("Http proxy write response failed")?;
                 }
 
+                info!("Requested http connection to: {}", addr);
                 if let Ok((a, b)) = copy_bidirectional(&mut self.ts, &mut target).await {
                     debug!(
                         "Http copy end for {} traffic: {}<=>{} total: {}",
