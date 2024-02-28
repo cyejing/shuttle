@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::BufReader;
 use std::path::PathBuf;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha224};
+use shuttle_station::tls::{load_certs, load_private_key};
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -93,8 +93,11 @@ impl ServerConfig {
         for addr in &mut sc.addrs {
             if let (Some(key), Some(cert)) = (&addr.key, &addr.cert) {
                 addr.ssl_enable = true;
-                addr.cert_loaded = Some(load_certs(cert).expect("load_certs failed"));
-                addr.key_loaded = Some(load_private_key(key).expect("load_private_key falied"));
+
+                addr.cert_loaded =
+                    Some(load_certs(PathBuf::from(cert)).expect("load_certs failed"));
+                addr.key_loaded =
+                    Some(load_private_key(PathBuf::from(key)).expect("load_private_key falied"));
             }
         }
         for password in &sc.trojan.passwords {
@@ -182,25 +185,6 @@ pub fn sha224(password: &str) -> String {
         result.len()
     );
     result
-}
-
-pub fn load_certs(filename: &str) -> std::io::Result<Vec<CertificateDer<'static>>> {
-    let cert_file = File::open(filename)
-        .context(format!("Can't open certificate file {}", filename))
-        .unwrap();
-    let mut reader = BufReader::new(cert_file);
-    rustls_pemfile::certs(&mut reader).collect()
-}
-
-pub fn load_private_key(filename: &str) -> std::io::Result<PrivateKeyDer<'static>> {
-    let keyfile = File::open(filename)
-        .unwrap_or_else(|e| panic!("Can't open private key file {filename}. {e}"));
-    let mut reader = BufReader::new(keyfile);
-    let x = rustls_pemfile::rsa_private_keys(&mut reader)
-        .next()
-        .unwrap()
-        .map(Into::into);
-    x
 }
 
 fn default_true() -> bool {

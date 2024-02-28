@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context};
 use log::debug;
-use std::sync::Arc;
+use std::{fs::File, io::BufReader, path::PathBuf, sync::Arc};
 use tokio_rustls::rustls::{
     client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
     pki_types::{CertificateDer, PrivateKeyDer, ServerName},
@@ -50,6 +50,22 @@ pub fn make_server_name<'a>(domain: &str) -> anyhow::Result<ServerName<'a>> {
         .map_err(|e| anyhow!("try from domain [{}] to server name err : {}", &domain, e))?
         .to_owned();
     Ok(server_name)
+}
+
+pub fn load_certs(path: PathBuf) -> std::io::Result<Vec<CertificateDer<'static>>> {
+    let cert_file = File::open(path.as_path()).expect("Can't open certificate file");
+    let mut reader = BufReader::new(cert_file);
+    rustls_pemfile::certs(&mut reader).collect()
+}
+
+pub fn load_private_key(path: PathBuf) -> std::io::Result<PrivateKeyDer<'static>> {
+    let keyfile = File::open(path.as_path()).expect("Can't open private key file");
+    let mut reader = BufReader::new(keyfile);
+    let x = rustls_pemfile::rsa_private_keys(&mut reader)
+        .next()
+        .unwrap()
+        .map(Into::into);
+    x
 }
 
 #[derive(Debug)]

@@ -31,24 +31,30 @@ pub async fn start_server(addr: &Addr, store: ServerStore) {
             let store = store.clone();
             let acceptor = acceptor.clone();
             let span = info_span!("trace", id = gen_traceid());
-            tokio::spawn(async move { server_handle(ts, store, acceptor).instrument(span).await });
+            tokio::spawn(async move {
+                if let Err(e) = server_handle(ts, store, acceptor).instrument(span).await {
+                    error!("Server handle failed. e:{e:?}");
+                }
+            });
         }
     });
 }
 
-async fn server_handle(ts: TcpStream, store: ServerStore, acceptor: Option<TlsAcceptor>) {
+async fn server_handle(
+    ts: TcpStream,
+    store: ServerStore,
+    acceptor: Option<TlsAcceptor>,
+) -> anyhow::Result<()> {
     match acceptor {
         Some(tls_acc) => {
-            match tls_acc.accept(ts).await {
-                Ok(tls_ts) => {
-                    ServerHandler::new(PeekableStream::new(tls_ts), store)
-                        .handle()
-                        .await
-                }
-                Err(e) => {
-                    error!("Accept tls connection err : {:?}", e);
-                }
-            };
+            let tls_ts = tls_acc
+                .accept(ts)
+                .await
+                .context("Accept tls connection err")?;
+
+            ServerHandler::new(PeekableStream::new(tls_ts), store)
+                .handle()
+                .await
         }
         None => {
             ServerHandler::new(PeekableStream::new(ts), store)
@@ -76,16 +82,12 @@ where
         }
     }
 
-    async fn handle(&mut self) {
-        let ret = match self.detect_head().await {
-            Ok(ConnType::Trojan) => self.handle_trojan().await,
-            Ok(ConnType::Rathole) => self.handle_rathole().await,
-            Ok(ConnType::Proxy) => self.handle_proxy().await,
-            Err(e) => Err(e).context("Can't detect head"),
-        };
-        if let Err(e) = ret {
-            error!("Server handle err: {e:?}");
-        };
+    async fn handle(&mut self) -> anyhow::Result<()> {
+        match self.detect_head().await? {
+            ConnType::Trojan => self.handle_trojan().await,
+            ConnType::Rathole => self.handle_rathole().await,
+            ConnType::Proxy => self.handle_proxy().await,
+        }
     }
 
     async fn detect_head(&mut self) -> anyhow::Result<ConnType> {
