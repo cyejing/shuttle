@@ -1172,7 +1172,7 @@ dependencies = [
 
 [[package]]
 name = "shuttle"
-version = "0.6.5"
+version = "0.6.6"
 dependencies = [
  "anyhow",
  "atoi",
@@ -1209,6 +1209,7 @@ dependencies = [
  "bytes",
  "futures",
  "log",
+ "rand",
  "rustls-pemfile 2.0.0",
  "socks5-proto",
  "tokio",
@@ -1254,8 +1255,7 @@ dependencies = [
 [[package]]
 name = "socks5-proto"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c7216e2046a0bd0aa4c4170dab8e7b918e5f1230031abe9a62dc3da47a40543"
+source = "git+https://github.com/cyejing/socks5-server.git#2318838e91f7208337eeec10619e4ae5aee3a958"
 dependencies = [
  "bytes",
  "thiserror",

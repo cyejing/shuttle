@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context};
 use shuttle_station::dial::{Dial, DirectDial};
 use shuttle_station::peekable::{AsyncPeek, PeekableStream};
+use shuttle_station::proto::padding::Padding;
 use shuttle_station::proto::{self, trojan};
 use tracing::{info_span, Instrument};
 
@@ -123,6 +124,10 @@ where
             .await
             .context("Trojan request read failed")?;
         let addr = req.address.clone();
+
+        if req.is_padding() {
+            Padding::default().write_to(stream).await?;
+        }
 
         debug!("Trojan start connect {addr}");
 

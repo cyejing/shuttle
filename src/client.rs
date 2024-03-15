@@ -1,9 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
 use shuttle_station::{
-    dial::{Dial, DirectDial, TrojanDial, WebSocketDial},
+    dial::{DirectDial, TrojanDial, WebSocketDial},
     proxy::ProxyConnection,
-    Address,
 };
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
@@ -68,6 +67,7 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
                     cc.remote_addr.clone(),
                     cc.hash.clone(),
                     cc.invalid_certs,
+                    cc.padding,
                 )),
             )
             .handle()
@@ -80,6 +80,7 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
                     cc.remote_addr.clone(),
                     cc.hash.clone(),
                     cc.invalid_certs,
+                    cc.padding,
                 )),
             )
             .handle()
@@ -94,17 +95,4 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
             .await;
         }
     };
-}
-
-#[allow(dead_code)]
-fn websocket_heartbeat_open(remote_addr: String, hash: String) {
-    tokio::spawn(async move {
-        loop {
-            let ws_dial = WebSocketDial::new(remote_addr.clone(), hash.clone());
-            let address = Address::DomainAddress("api.shuttle.rs".as_bytes().to_vec(), 443);
-            let wss = ws_dial.dial(address).await.ok();
-            info!("heartbeat dial {remote_addr} [{}]", wss.is_some());
-            tokio::time::sleep(Duration::from_secs(30)).await
-        }
-    });
 }

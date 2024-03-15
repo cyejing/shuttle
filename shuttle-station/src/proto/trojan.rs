@@ -7,6 +7,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::{peekable::AsyncPeek, CRLF};
 
+use super::padding::Padding;
+
 /// Trojan request
 ///
 /// ```plain
@@ -89,6 +91,12 @@ impl Request {
             .context("Trojan read Address failed")?;
 
         let _crlf = r.read_u16().await?;
+
+        if let Command::Padding = cmd {
+            let _padding = Padding::read_from(r)
+                .await
+                .context("trojan read padding failed")?;
+        }
 
         Ok(Self::new(hash, cmd, addr))
     }
@@ -173,6 +181,9 @@ impl Request {
         buf.put_u8(u8::from(self.command));
         self.write_to_buf_address(buf);
         buf.put_slice(&CRLF);
+        if self.is_padding() {
+            Padding::default().write_to_buf(buf)
+        }
     }
     pub fn write_to_buf_address<B: BufMut>(&self, buf: &mut B) {
         match &self.address {
@@ -199,5 +210,9 @@ impl Request {
 
     pub fn serialized_len(&self) -> usize {
         56 + 2 + 1 + self.address.serialized_len() + 2
+    }
+
+    pub fn is_padding(&self) -> bool {
+        Command::Padding == self.command
     }
 }

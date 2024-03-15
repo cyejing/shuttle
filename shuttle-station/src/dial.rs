@@ -11,6 +11,7 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::MaybeTlsStream;
 
+use crate::proto::padding::Padding;
 use crate::proto::trojan;
 use crate::tls::make_server_name;
 use crate::tls::make_tls_connector;
@@ -28,6 +29,7 @@ pub struct TrojanDial {
     remote_addr: String,
     hash: String,
     invalid_certs: bool,
+    padding: bool,
 }
 #[derive(Debug)]
 pub struct WebSocketDial {
@@ -36,11 +38,12 @@ pub struct WebSocketDial {
 }
 
 impl TrojanDial {
-    pub fn new(remote_addr: String, hash: String, invalid_certs: bool) -> Self {
+    pub fn new(remote_addr: String, hash: String, invalid_certs: bool, padding: bool) -> Self {
         Self {
             remote_addr,
             hash,
             invalid_certs,
+            padding,
         }
     }
 }
@@ -77,8 +80,14 @@ impl Dial<TcpStream> for TrojanDial {
             .await
             .context(format!("Trojan can't connect remote {}", remote_addr))?;
 
-        let req = trojan::Request::new(self.hash.clone(), Command::Connect, addr);
-        req.write_to(&mut remote_ts).await?;
+        if self.padding {
+            let req = trojan::Request::new(self.hash.clone(), Command::Padding, addr);
+            req.write_to(&mut remote_ts).await?;
+            Padding::read_from(&mut remote_ts).await?;
+        } else {
+            let req = trojan::Request::new(self.hash.clone(), Command::Connect, addr);
+            req.write_to(&mut remote_ts).await?;
+        };
 
         Ok(remote_ts)
     }
@@ -98,8 +107,14 @@ impl Dial<TlsStream<TcpStream>> for TrojanDial {
             .await
             .context("Trojan can't connect tls")?;
 
-        let req = trojan::Request::new(self.hash.clone(), Command::Connect, addr);
-        req.write_to(&mut remote_ts_ssl).await?;
+        if self.padding {
+            let req = trojan::Request::new(self.hash.clone(), Command::Padding, addr);
+            req.write_to(&mut remote_ts_ssl).await?;
+            Padding::read_from(&mut remote_ts_ssl).await?;
+        } else {
+            let req = trojan::Request::new(self.hash.clone(), Command::Connect, addr);
+            req.write_to(&mut remote_ts_ssl).await?;
+        }
 
         Ok(remote_ts_ssl)
     }

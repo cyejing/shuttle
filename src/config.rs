@@ -31,6 +31,8 @@ pub struct ClientConfig {
     pub ssl_enable: bool,
     #[serde(default = "default_false")]
     pub invalid_certs: bool,
+    #[serde(default = "default_true")]
+    pub padding: bool,
     #[serde(default)]
     pub holes: Vec<Hole>,
 }
