@@ -6,6 +6,7 @@ use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
+use tokio::time::timeout;
 
 use crate::config::ClientConfig;
 use crate::rathole::cmd::exchange::Exchange;
@@ -51,9 +52,9 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     buf.extend_from_slice(cc.hash.as_bytes());
     buf.extend_from_slice(&CRLF);
 
-    stream
-        .write_all(buf.as_slice())
+    timeout(Duration::from_secs(10), stream.write_all(buf.as_slice()))
         .await
+        .context("Remote write shake hands timeout")?
         .context("Can't write rathole hash")?;
 
     let (mut dispatcher, command_sender) = Dispatcher::new(stream, cc.hash);
@@ -81,13 +82,19 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     for hole in cc.holes {
         let open_proxy =
             Command::Hole(Hole::new(hole.remote_addr.clone(), hole.local_addr.clone()));
-        command_sender.send_sync(open_proxy).await?;
+        timeout(
+            Duration::from_secs(10),
+            command_sender.send_sync(open_proxy),
+        )
+        .await
+        .context("Hole open proxy timeout")?
+        .context("Hole open proxy failed")?;
         info!(
-            "open proxy for [remote:{}], [local:{}]",
+            "Hole open proxy for [remote:{}], [local:{}]",
             hole.remote_addr, hole.local_addr
         );
     }
-    rx.await?
+    rx.await.context("Dispatcher stop")?
 }
 
 async fn exchange_copy(
