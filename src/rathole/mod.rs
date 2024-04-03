@@ -114,10 +114,19 @@ async fn exchange_copy(
         context.current_conn_id
     );
     tokio::select! {
-        r1 = read_bytes(&mut r, context.clone()) => r1?,
-        r2 = write_bytes(&mut w, &mut rx) => r2?,
-        _ = shutdown.recv() => debug!("exchange recv shutdown signal")
+        r1 = read_bytes(&mut r, context.clone()) => r1,
+        r2 = write_bytes(&mut w, &mut rx) => r2,
+        _ = shutdown.recv() =>{
+            debug!("exchange recv shutdown signal");
+            Ok(())
+        }
     }
+    .ok();
+
+    info!(
+        "stop stream copy by exchange conn_id: {:?}",
+        context.current_conn_id
+    );
     Ok(())
 }
 

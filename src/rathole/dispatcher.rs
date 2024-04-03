@@ -309,7 +309,7 @@ impl Heartbeat {
                     let elapsed = self.beat_at.elapsed().as_secs();
                     debug!("last heartbeat at {}s ago", elapsed);
                     if elapsed > 60 {
-                        return Err(anyhow!("no have heartbeat in 30s"));
+                        return Err(anyhow!("no have heartbeat in 60s"));
                     }
                 },
             }
