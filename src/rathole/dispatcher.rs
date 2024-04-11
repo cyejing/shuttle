@@ -22,6 +22,7 @@ pub struct Dispatcher<T> {
     heartbeat_sender: mpsc::Sender<()>,
     context: context::Context,
     receiver: mpsc::Receiver<CommandChannel>,
+    start_at: Instant,
 }
 
 /// command read
@@ -54,6 +55,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
             beat_at: Instant::now(),
             receiver: heartbeat_receiver,
         };
+        let start_at = Instant::now();
 
         (
             Dispatcher {
@@ -63,6 +65,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Dispatcher<T> {
                 context,
                 heartbeat,
                 heartbeat_sender,
+                start_at,
             },
             command_sender,
         )
@@ -290,7 +293,10 @@ impl<T: AsyncWrite> CommandWrite<T> {
 impl<T> Drop for Dispatcher<T> {
     fn drop(&mut self) {
         self.context.notify_shutdown.send(()).ok();
-        info!("Drop Dispatcher")
+        info!(
+            "Drop dispatcher duration: {}s",
+            self.start_at.elapsed().as_secs()
+        );
     }
 }
 
@@ -307,9 +313,10 @@ impl Heartbeat {
                 },
                 _ = interval.tick() => {
                     let elapsed = self.beat_at.elapsed().as_secs();
-                    debug!("last heartbeat at {}s ago", elapsed);
-                    if elapsed > 60 {
-                        return Err(anyhow!("no have heartbeat in 30s"));
+                    let deadline = 60 * 10;
+                    if elapsed > deadline {
+                    info!("The heartbeat has reached deadline: {deadline}s, elapsed: {elapsed}s");
+                        return Err(anyhow!("heartbeat has reached deadline"));
                     }
                 },
             }

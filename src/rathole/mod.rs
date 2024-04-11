@@ -64,14 +64,14 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 
     let command_sender_cloned = command_sender.clone();
     tokio::spawn(async move {
-        let mut last_ping = 10 * 60;
+        let mut last_ping = 60; // 10min
         loop {
             if last_ping > 0 {
                 command_sender_cloned
                     .send_sync(Command::Ping(Ping::new(None)))
                     .await
                     .ok();
-                last_ping -= 10;
+                last_ping -= 1;
             } else {
                 break;
             }
@@ -113,6 +113,10 @@ async fn exchange_copy(
         r2 = write_bytes(&mut w, &mut rx) => r2?,
         _ = shutdown.recv() => debug!("exchange recv shutdown signal")
     }
+    info!(
+        "stop stream copy by exchange conn_id: {:?}",
+        context.current_conn_id
+    );
     Ok(())
 }
 

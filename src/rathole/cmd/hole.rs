@@ -98,10 +98,10 @@ impl HoleServer {
     async fn run(&mut self, listener: TcpListener) -> anyhow::Result<()> {
         loop {
             let (ts, _) = listener.accept().await?;
-            info!("accept proxy conn");
             let (tx, rx) = mpsc::channel(1);
 
             let conn_id = self.id_adder.add_and_get().await;
+            info!("Hole accept proxy conn {conn_id}");
             let conn_sender = ConnSender::new(conn_id, tx);
             self.context.set_conn_sender(conn_sender).await;
 
