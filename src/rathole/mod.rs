@@ -102,11 +102,7 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     rx.await.context("Dispatcher stop")?
 }
 
-async fn exchange_copy(
-    ts: TcpStream,
-    mut rx: mpsc::Receiver<Bytes>,
-    context: context::Context,
-) -> anyhow::Result<()> {
+async fn exchange_copy(ts: TcpStream, mut rx: mpsc::Receiver<Bytes>, context: context::Context) {
     let (mut r, mut w) = io::split(ts);
     let mut shutdown = context.notify_shutdown.subscribe();
     info!(
@@ -120,12 +116,14 @@ async fn exchange_copy(
             debug!("exchange recv shutdown signal");
             Ok(())
         }
-    }?;
+    }
+    .inspect_err(|e| debug!("exchange copy faield {e}"))
+    .ok();
+
     info!(
         "stop stream copy by exchange conn_id: {:?}",
         context.current_conn_id
     );
-    Ok(())
 }
 
 async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: context::Context) -> anyhow::Result<()> {

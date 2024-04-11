@@ -68,9 +68,7 @@ impl DialConn {
             let conn_sender = ConnSender::new(conn_id, tx);
             context.with_conn_id(conn_id);
             context.set_conn_sender(conn_sender).await;
-            if let Err(e) = exchange_copy(stream, rx, context.clone()).await {
-                debug!("exchange copy close: {}", e);
-            }
+            exchange_copy(stream, rx, context.clone()).await;
             context.remove_conn_sender().await;
         });
         Ok(())

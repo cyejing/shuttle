@@ -101,7 +101,7 @@ impl HoleServer {
             let (tx, rx) = mpsc::channel(1);
 
             let conn_id = self.id_adder.add_and_get().await;
-            info!("Hole accept proxy conn {conn_id}");
+            info!("Hole accept proxy conn ({conn_id})");
             let conn_sender = ConnSender::new(conn_id, tx);
             self.context.set_conn_sender(conn_sender).await;
 
@@ -111,9 +111,7 @@ impl HoleServer {
             let dial = Command::Dial(Dial::new(conn_id, self.local_addr.clone()));
             context.command_sender.send_sync(dial).await?;
             tokio::spawn(async move {
-                if let Err(e) = exchange_copy(ts, rx, context.clone()).await {
-                    debug!("exchange copy close : {}", e);
-                }
+                exchange_copy(ts, rx, context.clone()).await;
                 context.remove_conn_sender().await;
             });
         }
