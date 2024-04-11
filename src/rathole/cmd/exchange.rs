@@ -51,7 +51,7 @@ impl CommandApply for Exchange {
                 }
             }
             None => {
-                error!("exchange conn {} close", conn_id);
+                debug!("exchange conn {} close", conn_id);
             }
         }
         Ok(Some(Resp::Ok("ok".to_string())))
