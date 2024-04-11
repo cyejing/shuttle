@@ -170,8 +170,8 @@ impl CommandSender {
                 Ok(())
             }
             Err(e) => {
-                error!("send_sync {} await resp err {}", req_id, e);
-                Err(anyhow!(format!("await resp err {}", e)))
+                error!("send_sync {} resp err {}", req_id, e);
+                Err(anyhow!(format!("send_sync resp err {}", e)))
             }
         }
     }

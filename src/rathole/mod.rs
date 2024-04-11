@@ -28,16 +28,21 @@ pub type CommandChannel = (u64, Command, ReqChannel);
 
 pub async fn start_rathole(cc: ClientConfig) -> anyhow::Result<()> {
     let remote_addr = &cc.remote_addr;
-    let stream = TcpStream::connect(remote_addr)
+    let stream = timeout(Duration::from_secs(10), TcpStream::connect(remote_addr))
         .await
+        .context("Connect remote timeout")?
         .context(format!("Can't connect remote addr {}", remote_addr))?;
 
     info!("Rathole connect remote {} success", remote_addr);
     if cc.ssl_enable {
         let domain = make_server_name(remote_addr)?;
-        let tls_stream = make_tls_connector(cc.invalid_certs)
-            .connect(domain, stream)
-            .await?;
+        let tls_stream = timeout(
+            Duration::from_secs(10),
+            make_tls_connector(cc.invalid_certs).connect(domain, stream),
+        )
+        .await
+        .context("Connect remote tls timeout")?
+        .context("Connect remote tls failed")?;
         handle(tls_stream, cc).await
     } else {
         handle(stream, cc).await
@@ -109,10 +114,13 @@ async fn exchange_copy(
         context.current_conn_id
     );
     tokio::select! {
-        r1 = read_bytes(&mut r, context.clone()) => r1?,
-        r2 = write_bytes(&mut w, &mut rx) => r2?,
-        _ = shutdown.recv() => debug!("exchange recv shutdown signal")
-    }
+        r1 = read_bytes(&mut r, context.clone()) => r1,
+        r2 = write_bytes(&mut w, &mut rx) => r2,
+        _ = shutdown.recv() =>{
+            debug!("exchange recv shutdown signal");
+            Ok(())
+        }
+    }?;
     info!(
         "stop stream copy by exchange conn_id: {:?}",
         context.current_conn_id
