@@ -34,7 +34,7 @@ atoi = "2"
 itertools = "0.12.0"
 uuid = {version="1.5.0", features=["v4"]}
 futures= { version = "0.3"}
-socks5-proto = "0.4.0"
+socks5-proto = { version="0.4.1" }
 
 [dependencies]
 shuttle-station = {path="shuttle-station"}
@@ -68,5 +68,3 @@ futures= {workspace = true}
 [dev-dependencies]
 reqwest = { version = "0.11", default-features=false, features = ["socks","rustls-tls"] }
 
-[patch.crates-io]
-socks5-proto = {git="https://github.com/cyejing/socks5-server.git"}

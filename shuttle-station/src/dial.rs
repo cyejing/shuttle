@@ -4,7 +4,6 @@ use anyhow::Context;
 use async_trait::async_trait;
 use futures::SinkExt;
 use socks5_proto::Address;
-use socks5_proto::Command;
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 use tokio_tungstenite::connect_async;
@@ -13,6 +12,7 @@ use tokio_tungstenite::MaybeTlsStream;
 
 use crate::proto::padding::Padding;
 use crate::proto::trojan;
+use crate::proto::trojan::Command;
 use crate::tls::make_server_name;
 use crate::tls::make_tls_connector;
 use crate::websocket::WebSocketCopyStream;
