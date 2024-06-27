@@ -21,4 +21,5 @@ check:
 
 publish:
 	cargo publish --registry crates-io --manifest-path shuttle-station/Cargo.toml
+	cargo doc
 

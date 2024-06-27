@@ -89,7 +89,11 @@ async fn proxy_handle(cc: Arc<ClientConfig>, ts: TcpStream) {
         (ProxyMode::Websocket, _) => {
             ProxyConnection::new(
                 ts,
-                Box::new(WebSocketDial::new(cc.remote_addr.clone(), cc.hash.clone())),
+                Box::new(WebSocketDial::new(
+                    cc.remote_addr.clone(),
+                    cc.hash.clone(),
+                    cc.padding,
+                )),
             )
             .handle()
             .await;

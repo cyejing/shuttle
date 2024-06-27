@@ -9,6 +9,12 @@ pub struct Padding {
 }
 
 impl Padding {
+    pub fn new(start: u16, end: u16) -> Self {
+        let mut rng = rand::thread_rng();
+        let len = rng.gen_range(start..end);
+        Self { len }
+    }
+
     pub async fn read_from<R>(stream: &mut R) -> anyhow::Result<Self>
     where
         R: AsyncRead + Unpin,
@@ -52,8 +58,6 @@ impl Padding {
 
 impl Default for Padding {
     fn default() -> Self {
-        let mut rng = rand::thread_rng();
-        let len = rng.gen_range(100..3000);
-        Self { len }
+        Self::new(2500, 4500)
     }
 }

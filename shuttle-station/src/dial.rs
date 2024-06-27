@@ -3,6 +3,7 @@ use std::fmt;
 use anyhow::Context;
 use async_trait::async_trait;
 use futures::SinkExt;
+use futures::StreamExt;
 use socks5_proto::Address;
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
@@ -35,6 +36,7 @@ pub struct TrojanDial {
 pub struct WebSocketDial {
     remote_addr: String,
     hash: String,
+    padding: bool,
 }
 
 impl TrojanDial {
@@ -49,8 +51,12 @@ impl TrojanDial {
 }
 
 impl WebSocketDial {
-    pub fn new(remote_addr: String, hash: String) -> Self {
-        Self { remote_addr, hash }
+    pub fn new(remote_addr: String, hash: String, padding: bool) -> Self {
+        Self {
+            remote_addr,
+            hash,
+            padding,
+        }
     }
 }
 
@@ -131,15 +137,24 @@ impl Dial<WebSocketCopyStream<MaybeTlsStream<TcpStream>>> for WebSocketDial {
             .await
             .context(format!("WebSocket can't connect remote {}", remote_addr))?;
 
-        let mut buf: Vec<u8> = vec![];
-        let req = trojan::Request::new(self.hash.clone(), Command::Connect, addr);
-        req.write_to_buf(&mut buf);
-
-        ws.send(Message::Binary(buf))
-            .await
-            .context("WebSocket can't send")?;
-        ws.flush().await?;
-
+        if self.padding {
+            let mut buf: Vec<u8> = vec![];
+            let req = trojan::Request::new(self.hash.clone(), Command::Padding, addr);
+            req.write_to_buf(&mut buf);
+            ws.send(Message::Binary(buf))
+                .await
+                .context("WebSocket can't send")?;
+            ws.flush().await?;
+            let _ = ws.next().await;
+        } else {
+            let mut buf: Vec<u8> = vec![];
+            let req = trojan::Request::new(self.hash.clone(), Command::Connect, addr);
+            req.write_to_buf(&mut buf);
+            ws.send(Message::Binary(buf))
+                .await
+                .context("WebSocket can't send")?;
+            ws.flush().await?;
+        }
         Ok(WebSocketCopyStream::new(ws))
     }
 }
