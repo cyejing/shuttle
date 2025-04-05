@@ -58,6 +58,6 @@ impl Padding {
 
 impl Default for Padding {
     fn default() -> Self {
-        Self::new(2500, 4500)
+        Self::new(256, 2048)
     }
 }

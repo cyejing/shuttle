@@ -315,7 +315,7 @@ impl Heartbeat {
                     let elapsed = self.beat_at.elapsed().as_secs();
                     let deadline = 60 * 10;
                     if elapsed > deadline {
-                    info!("The heartbeat has reached deadline: {deadline}s, elapsed: {elapsed}s");
+                        info!("The heartbeat has reached deadline: {deadline}s, elapsed: {elapsed}s");
                         return Err(anyhow!("heartbeat has reached deadline"));
                     }
                 },
@@ -336,11 +336,10 @@ mod tests {
     async fn frame_write_read(frame: &Frame) -> Frame {
         let mut cell = RefCell::new(Vec::new());
         let mut command_write = new_command_write(cell.get_mut());
-        command_write.write_frame(&frame).await.unwrap();
+        command_write.write_frame(frame).await.unwrap();
 
         let mut command_read = new_command_read(cell.get_mut());
-        let f = command_read.read_frame().await.unwrap();
-        f
+        command_read.read_frame().await.unwrap()
     }
 
     #[tokio::test]
