@@ -19,6 +19,10 @@ check:
 	cargo fmt --check -v
 	cargo clippy -- -D warnings
 
+fix:
+	cargo clippy --all --fix --allow-dirty --allow-staged
+	cargo fmt
+
 publish:
 	cargo publish --registry crates-io --manifest-path shuttle-station/Cargo.toml
 	cargo doc

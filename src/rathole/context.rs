@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -42,8 +42,7 @@ impl Context {
     pub(crate) async fn set_req(&self, req_channel: ReqChannel) {
         trace!(
             "Context set req {:?} {:?}",
-            self.current_req_id,
-            req_channel
+            self.current_req_id, req_channel
         );
         if let Some(req_id) = self.current_req_id {
             if req_channel.is_some() {

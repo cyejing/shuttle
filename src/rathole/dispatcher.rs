@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::{Context, anyhow, bail};
 use bytes::{Buf, BytesMut};
 use tokio::io;
 use tokio::io::{
@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use crate::rathole::cmd::Command;
 use crate::rathole::context::CommandSender;
 use crate::rathole::frame::Frame;
-use crate::rathole::{context, CommandChannel};
+use crate::rathole::{CommandChannel, context};
 
 pub struct Dispatcher<T> {
     command_read: CommandRead<T>,

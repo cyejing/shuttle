@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{command, Parser};
+use clap::{Parser, command};
 
 use shuttle::client::{start_proxy, start_rathole};
 use shuttle::config::ClientConfig;

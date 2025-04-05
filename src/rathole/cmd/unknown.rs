@@ -1,5 +1,5 @@
-use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::CommandApply;
+use crate::rathole::cmd::resp::Resp;
 use crate::rathole::context::Context;
 
 #[derive(Debug)]

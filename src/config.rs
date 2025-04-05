@@ -3,9 +3,9 @@ use std::fs::File;
 use std::path::PathBuf;
 
 use anyhow::Context;
+use borer_core::tls::{load_certs, load_private_key};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha224};
-use shuttle_station::tls::{load_certs, load_private_key};
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
 #[derive(Debug, Serialize, Deserialize)]

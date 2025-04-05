@@ -1,16 +1,16 @@
-use anyhow::{anyhow, Context};
-use shuttle_station::dial::{Dial, DirectDial};
-use shuttle_station::peekable::{AsyncPeek, PeekableStream};
-use shuttle_station::proto::padding::Padding;
-use shuttle_station::proto::{self, trojan};
-use tracing::{info_span, Instrument};
+use anyhow::{Context, anyhow};
+use borer_core::dial::{Dial, DirectDial};
+use borer_core::peekable::{AsyncPeek, PeekableStream};
+use borer_core::proto::padding::Padding;
+use borer_core::proto::{self, trojan};
+use tracing::{Instrument, info_span};
 
 use crate::config::Addr;
 use crate::gen_traceid;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::store::ServerStore;
-use shuttle_station::tls::make_tls_acceptor;
-use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use borer_core::tls::make_tls_acceptor;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, copy_bidirectional};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
 

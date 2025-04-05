@@ -3,8 +3,8 @@ use log::info;
 use shuttle::init_log;
 use tokio::io;
 
-use shuttle::rathole::cmd::ping::Ping;
 use shuttle::rathole::cmd::Command;
+use shuttle::rathole::cmd::ping::Ping;
 use shuttle::rathole::dispatcher::{CommandRead, CommandWrite};
 use tokio::net::TcpStream;
 

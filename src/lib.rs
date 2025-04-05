@@ -1,10 +1,10 @@
 use time::macros::{format_description, offset};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{
+    EnvFilter, Layer,
     fmt::{layer, time::OffsetTime},
     prelude::__tracing_subscriber_SubscriberExt,
     util::SubscriberInitExt,
-    EnvFilter, Layer,
 };
 use uuid::Uuid;
 
@@ -22,11 +22,11 @@ pub const CRLF: [u8; 2] = [0x0d, 0x0a];
 
 pub fn init_log() {
     let timer = OffsetTime::new(
-            offset!(+8),
-            format_description!(
-                "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]+[offset_hour][offset_minute]"
-            ),
-        );
+        offset!(+8),
+        format_description!(
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]+[offset_hour][offset_minute]"
+        ),
+    );
     let stdout = layer()
         .with_timer(timer.clone())
         .with_ansi(false)

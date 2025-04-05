@@ -3,7 +3,7 @@ use std::time::Duration;
 use shuttle::{
     init_log,
     rathole::{
-        cmd::{ping::Ping, Command},
+        cmd::{Command, ping::Ping},
         dispatcher::{CommandRead, CommandWrite},
     },
 };

@@ -32,8 +32,8 @@ pub async fn start_server(path: &str) {
     let config = ServerConfig::load(Option::Some(PathBuf::from(path)));
 
     let store = ServerStore::from(&config);
-    let addr = config.addrs.get(0).unwrap();
-    shuttle::server::start_server(&addr, store.clone()).await;
+    let addr = config.addrs.first().unwrap();
+    shuttle::server::start_server(addr, store.clone()).await;
 }
 
 #[allow(dead_code)]

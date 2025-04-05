@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use bytes::{Bytes, BytesMut};
 use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
@@ -8,13 +8,13 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
+use crate::CRLF;
 use crate::config::ClientConfig;
+use crate::rathole::cmd::Command;
 use crate::rathole::cmd::exchange::Exchange;
 use crate::rathole::cmd::hole::Hole;
-use crate::rathole::cmd::Command;
 use crate::rathole::dispatcher::Dispatcher;
-use crate::CRLF;
-use shuttle_station::tls::{make_server_name, make_tls_connector};
+use borer_core::tls::{make_server_name, make_tls_connector};
 
 use self::cmd::ping::Ping;
 
@@ -169,9 +169,9 @@ mod tests {
     use std::cell::RefCell;
     use std::io::Cursor;
 
+    use crate::rathole::cmd::Command;
     use crate::rathole::cmd::ping::Ping;
     use crate::rathole::cmd::resp::Resp;
-    use crate::rathole::cmd::Command;
     use crate::rathole::dispatcher::{CommandRead, CommandWrite};
 
     pub fn new_command_read(buf: &mut Vec<u8>) -> CommandRead<Cursor<Vec<u8>>> {

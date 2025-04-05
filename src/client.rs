@@ -1,12 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
-use shuttle_station::{
+use borer_core::{
     dial::{DirectDial, TrojanDial, WebSocketDial},
     proxy::ProxyConnection,
 };
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
-use tracing::{info_span, Instrument};
+use tracing::{Instrument, info_span};
 
 use crate::{
     config::{ClientConfig, ProxyMode},
