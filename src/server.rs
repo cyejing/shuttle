@@ -1,18 +1,17 @@
 use anyhow::{Context, anyhow};
 use borer_core::dial::{Dial, DirectDial};
-use borer_core::peekable::{AsyncPeek, PeekableStream};
 use borer_core::proto::padding::Padding;
 use borer_core::proto::{self, trojan};
+use borer_core::stream::acceptor::Acceptor;
+use borer_core::stream::peekable::{AsyncPeek, PeekableStream};
 use tracing::{Instrument, info_span};
 
 use crate::config::Addr;
 use crate::gen_traceid;
 use crate::rathole::dispatcher::Dispatcher;
 use crate::store::ServerStore;
-use borer_core::tls::make_tls_acceptor;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, copy_bidirectional};
 use tokio::net::{TcpListener, TcpStream};
-use tokio_rustls::TlsAcceptor;
 
 pub async fn start_server(addr: &Addr, store: ServerStore) {
     let addr_str = &addr.addr;
@@ -20,13 +19,8 @@ pub async fn start_server(addr: &Addr, store: ServerStore) {
         .await
         .context(format!("Can't bind server port {}", addr_str))
         .unwrap();
-    info!("Server listener addr : {}", addr_str);
-    let acceptor = if addr.ssl_enable {
-        make_tls_acceptor(addr.cert_loaded.clone(), addr.key_loaded.as_ref())
-    } else {
-        None
-    };
-
+    info!("server up and running. listen: {}", addr_str);
+    let acceptor = Acceptor::new(addr.cert.clone(), addr.key.clone());
     tokio::spawn(async move {
         while let Ok((ts, _)) = listener.accept().await {
             let store = store.clone();
@@ -44,25 +38,12 @@ pub async fn start_server(addr: &Addr, store: ServerStore) {
 async fn server_handle(
     ts: TcpStream,
     store: ServerStore,
-    acceptor: Option<TlsAcceptor>,
+    acceptor: Acceptor,
 ) -> anyhow::Result<()> {
-    match acceptor {
-        Some(tls_acc) => {
-            let tls_ts = tls_acc
-                .accept(ts)
-                .await
-                .context("Accept tls connection err")?;
-
-            ServerHandler::new(PeekableStream::new(tls_ts), store)
-                .handle()
-                .await
-        }
-        None => {
-            ServerHandler::new(PeekableStream::new(ts), store)
-                .handle()
-                .await
-        }
-    }
+    let ts = acceptor.accept(ts).await?;
+    ServerHandler::new(PeekableStream::new(ts), store)
+        .handle()
+        .await
 }
 
 struct ServerHandler<T> {
