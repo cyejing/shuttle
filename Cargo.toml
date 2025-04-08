@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-borer-core = {path="../borer-core"}
+borer-core = {path="../borer-core",features = ["websocket"]}
 
 log = {version="0.4", features=["kv_unstable_serde"]}
 tracing="0.1"
