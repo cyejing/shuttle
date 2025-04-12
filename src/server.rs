@@ -1,8 +1,8 @@
 use anyhow::{Context, anyhow};
+use borer_core::connection::dial::{Dial as _, DirectDial};
 use borer_core::proto::padding::Padding;
 use borer_core::proto::{self, trojan};
 use borer_core::stream::acceptor::Acceptor;
-use borer_core::stream::dial::{Dial, DirectDial};
 use borer_core::stream::peekable::{AsyncPeek, PeekableStream};
 use tracing::{Instrument, info_span};
 

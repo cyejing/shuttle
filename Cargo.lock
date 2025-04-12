@@ -204,9 +204,9 @@ dependencies = [
 
 [[package]]
 name = "borer-core"
-version = "0.1.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e391b770821ba0e5ddfc8e3757f54b14e3ce5d7480631b06a055ff197b9da50"
+checksum = "17bb1c6e2d9008aaefee798f12288598300e76d29033ab8cb0f216e33ae440cc"
 dependencies = [
  "anyhow",
  "async-trait",

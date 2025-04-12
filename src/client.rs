@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use borer_core::stream::{
+use borer_core::connection::{
     dial::{DirectDial, TrojanDial, WebSocketDial},
     proxy::ProxyConnection,
 };
