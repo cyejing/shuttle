@@ -1,5 +1,5 @@
 [Unit]
-Description=Shuttle Server Service
+Description=Shuttle Client Service
 After=network.target
 
 [Service]
@@ -7,7 +7,7 @@ Type=simple
 User=nobody
 Restart=on-failure
 RestartSec=5s
-ExecStart=/opt/shuttle/shuttles /opt/shuttle/shuttles.yaml
+ExecStart=/opt/shuttle/shuttle /opt/shuttle/client.yaml
 
 [Install]
 WantedBy=multi-user.target

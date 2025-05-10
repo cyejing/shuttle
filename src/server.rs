@@ -1,14 +1,14 @@
 use anyhow::{Context, anyhow};
+use borer_core::dial::{Dial as _, DirectDial};
 use borer_core::proto::padding::Padding;
 use borer_core::proto::{self, trojan};
 use borer_core::stream::acceptor::Acceptor;
-use borer_core::stream::dial::{Dial, DirectDial};
 use borer_core::stream::peekable::{AsyncPeek, PeekableStream};
 use tracing::{Instrument, info_span};
 
 use crate::config::Addr;
-use crate::gen_traceid;
 use crate::rathole::dispatcher::Dispatcher;
+use crate::setup::gen_traceid;
 use crate::store::ServerStore;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, copy_bidirectional};
 use tokio::net::{TcpListener, TcpStream};

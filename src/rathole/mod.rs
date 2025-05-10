@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use anyhow::{Context, anyhow};
+use borer_core::CRLF;
 use bytes::{Bytes, BytesMut};
 use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
@@ -8,7 +9,6 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
-use crate::CRLF;
 use crate::config::ClientConfig;
 use crate::rathole::cmd::Command;
 use crate::rathole::cmd::exchange::Exchange;

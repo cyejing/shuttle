@@ -90,17 +90,16 @@ jobs:
         run: |
           xcopy examples target\${{ matrix.target }}\release\examples /s /e /y /i
           cd target/${{ matrix.target }}/release
-          strip shuttles.exe
-          strip shuttlec.exe
-          7z a ../../../${{ matrix.name }} shuttles.exe shuttlec.exe examples
+          strip shuttle.exe
+          7z a ../../../${{ matrix.name }} shuttle.exe examples
           cd -
       - name: Post Build | Prepare artifacts [unix]
         if: matrix.os != 'windows-latest'
         run: |
           cp -r examples target/${{ matrix.target }}/release
           cd target/${{ matrix.target }}/release
-          strip shuttles && strip shuttlec || true
-          tar czvf ../../../${{ matrix.name }} shuttles shuttlec examples
+          strip shuttle || true
+          tar czvf ../../../${{ matrix.name }} shuttle examples
           cd -
 
       - name: Deploy | Upload artifacts

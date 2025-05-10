@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use borer_core::stream::{
+use borer_core::{
     dial::{DirectDial, TrojanDial, WebSocketDial},
     proxy::ProxyConnection,
 };
@@ -10,7 +10,8 @@ use tracing::{Instrument, info_span};
 
 use crate::{
     config::{ClientConfig, ProxyMode},
-    gen_traceid, rathole,
+    rathole,
+    setup::gen_traceid,
 };
 
 pub async fn start_rathole(cc: ClientConfig) {

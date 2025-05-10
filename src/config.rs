@@ -83,7 +83,7 @@ pub enum ProxyMode {
     Websocket,
 }
 
-const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["shuttles.yaml", "examples/shuttles.yaml"];
+const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["server.yaml", "examples/server.yaml"];
 
 impl ServerConfig {
     pub fn load(path: Option<PathBuf>) -> ServerConfig {
@@ -117,12 +117,12 @@ impl ServerConfig {
 }
 
 const DEFAULT_CLIENT_CONFIG_PATH: [&str; 6] = [
-    "shuttlec.yaml",
-    "shuttlec-proxy.yaml",
-    "shuttlec-rathole.yaml",
-    "examples/shuttlec.yaml",
-    "examples/shuttlec-proxy.yaml",
-    "examples/shuttlec-rathole.yaml",
+    "client.yaml",
+    "client-proxy.yaml",
+    "client-rathole.yaml",
+    "examples/client.yaml",
+    "examples/client-proxy.yaml",
+    "examples/client-rathole.yaml",
 ];
 
 impl ClientConfig {
