@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand, command};
 use shuttle::{
     client::{start_proxy, start_rathole},
     config::{ClientConfig, ServerConfig},
-    server,
+    server::{self, start_stats_server},
     setup::setup_log,
     store::ServerStore,
 };
@@ -50,6 +50,7 @@ async fn start_server(args: ArgsConfig) {
     for addr in config.addrs {
         server::start_server(&addr, store.clone()).await;
     }
+    start_stats_server(config.stats_addr, config.stats_secret);
 }
 
 async fn start_client(args: ArgsConfig) {

@@ -11,6 +11,8 @@ use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerConfig {
     pub addrs: Vec<Addr>,
+    pub stats_addr: Option<String>,
+    pub stats_secret: Option<String>,
     pub trojan: Trojan,
     pub rathole: RatHole,
 }
