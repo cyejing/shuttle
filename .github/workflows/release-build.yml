@@ -38,12 +38,9 @@ jobs:
             target: aarch64-unknown-linux-musl
             name: shuttle-aarch64-unknown-linux-musl.tgz
           - os: ubuntu-latest
-            target: i686-unknown-linux-musl
-            name: shuttle-i686-unknown-linux-musl.tgz
-          - os: ubuntu-latest
-            target: armv7-unknown-linux-musleabihf
-            name: shuttle-armv7-unknown-linux-musleabihf.tgz
-        
+            target: arm-unknown-linux-musleabihf
+            name: shuttle-arm-unknown-linux-musl.tgz
+                  
           - os: macOS-latest
             target: x86_64-apple-darwin
             name: shuttle-x86_64-apple-darwin.tgz
@@ -54,9 +51,6 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: shuttle-x86_64-pc-windows-msvc.zip
-          - os: windows-latest
-            target: i686-pc-windows-msvc
-            name: shuttle-i686-pc-windows-msvc.zip
             
     permissions:
       contents: write
