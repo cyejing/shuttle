@@ -1,191 +1,130 @@
-use anyhow::{Context, anyhow};
-use borer_core::connection::dial::{Dial as _, DirectDial};
-use borer_core::proto::padding::Padding;
-use borer_core::proto::{self, trojan};
-use borer_core::stream::acceptor::Acceptor;
+use std::sync::Arc;
+
+use anyhow::Context;
+use borer_core::masquerade::MasqueradeConnection;
+use borer_core::proto::{self};
+use borer_core::stats_server;
+use borer_core::stream::acceptor::{Acceptor, MaybeTlsStream};
 use borer_core::stream::peekable::{AsyncPeek, PeekableStream};
+use borer_core::trojan::TrojanConnection;
 use tracing::{Instrument, info_span};
 
-use crate::config::Addr;
-use crate::gen_traceid;
+use crate::auth::AuthHandler;
+use crate::config::ServerConfig;
 use crate::rathole::dispatcher::Dispatcher;
+use crate::setup::gen_traceid;
 use crate::store::ServerStore;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, copy_bidirectional};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
 
-pub async fn start_server(addr: &Addr, store: ServerStore) {
-    let addr_str = &addr.addr;
-    let listener = TcpListener::bind(addr_str)
+#[derive(Clone)]
+struct State {
+    acceptor: Arc<Acceptor>,
+    auth_handler: Arc<AuthHandler>,
+    store: Arc<ServerStore>,
+}
+
+pub async fn start_server(config: &ServerConfig) {
+    let addr = &config.listen;
+    let listener = TcpListener::bind(addr)
         .await
-        .context(format!("Can't bind server port {}", addr_str))
-        .unwrap();
-    info!("server up and running. listen: {}", addr_str);
-    let acceptor = Acceptor::new(addr.cert.clone(), addr.key.clone());
+        .unwrap_or_else(|_| panic!("Can't bind server port {addr}"));
+    info!("Server up and running. listen: {addr}");
+    let state = create_state(config);
+
     tokio::spawn(async move {
         while let Ok((ts, _)) = listener.accept().await {
-            let store = store.clone();
-            let acceptor = acceptor.clone();
+            let state = state.clone();
             let span = info_span!("trace", id = gen_traceid());
             tokio::spawn(async move {
-                if let Err(e) = server_handle(ts, store, acceptor).instrument(span).await {
-                    error!("Server handle failed. e:{e:?}");
+                if let Err(e) = server_handle(ts, state).instrument(span).await {
+                    error!("Server handle failed. err: {e:?}");
                 }
             });
         }
     });
 }
 
-async fn server_handle(
-    ts: TcpStream,
-    store: ServerStore,
-    acceptor: Acceptor,
-) -> anyhow::Result<()> {
-    let ts = acceptor.accept(ts).await?;
-    ServerHandler::new(PeekableStream::new(ts), store)
-        .handle()
-        .await
+pub fn start_stats_server(config: &ServerConfig) {
+    if let Some(c) = &config.traffic_stats {
+        stats_server::StatsServer::new(&c.listen, &c.secret).serve();
+        info!("stats_server up and running. listen: {}", &c.listen);
+    }
 }
 
-struct ServerHandler<T> {
-    inner: T,
-    hash: Option<String>,
-    store: ServerStore,
-}
+fn create_state(config: &ServerConfig) -> State {
+    let acceptor = Acceptor::new(
+        config.tls.clone().map(|o| o.cert),
+        config.tls.clone().map(|o| o.key),
+    );
 
-impl<T> ServerHandler<T>
-where
-    T: AsyncRead + AsyncWrite + AsyncPeek + Unpin,
-{
-    pub fn new(inner: T, store: ServerStore) -> Self {
-        Self {
-            inner,
-            hash: None,
-            store,
-        }
-    }
-
-    async fn handle(&mut self) -> anyhow::Result<()> {
-        match self.detect_head().await? {
-            ConnType::Trojan => self.handle_trojan().await,
-            ConnType::Rathole => self.handle_rathole().await,
-            ConnType::Proxy => self.handle_proxy().await,
-        }
-    }
-
-    async fn detect_head(&mut self) -> anyhow::Result<ConnType> {
-        let head = proto::trojan::Request::peek_head(&mut self.inner)
-            .await
-            .context("Server peek head failed")?;
-        if head.len() < 56 {
-            return Ok(ConnType::Proxy);
-        }
-
-        let hash_str = String::from_utf8(head).context("Trojan hash to string failed")?;
-
-        let trojan = self.store.get_trojan();
-        let rathole = self.store.get_rahole();
-
-        if trojan.password_hash.contains_key(&hash_str) {
-            debug!("detect trojan {}", hash_str);
-            self.hash = Some(hash_str);
-            Ok(ConnType::Trojan)
-        } else if rathole.password_hash.contains_key(&hash_str) {
-            debug!("detect rathole {}", hash_str);
-            self.hash = Some(hash_str);
-            Ok(ConnType::Rathole)
-        } else {
-            debug!("detect proxy");
-            Ok(ConnType::Proxy)
-        }
-    }
-
-    async fn handle_trojan(&mut self) -> anyhow::Result<()> {
-        let stream = &mut self.inner;
-        let req = trojan::Request::read_from(stream)
-            .await
-            .context("Trojan request read failed")?;
-        let addr = req.address.clone();
-
-        if req.is_padding() {
-            Padding::default().write_to(stream).await?;
-        }
-
-        debug!("Trojan start connect {addr}");
-
-        let mut remote_ts = DirectDial::default()
-            .dial(addr.clone())
-            .await
-            .context(format!("Trojan connect remote addr {} failed", req.address))?;
-
-        info!("Trojan Requested to {}", addr);
-        if let Ok((a, b)) = copy_bidirectional(stream, &mut remote_ts).await {
-            info!(
-                "Trojan copy end for {} traffic: {}<=>{} total: {}",
-                req.address,
-                a,
-                b,
-                a + b
-            );
-        }
-
-        Ok(())
-    }
-
-    async fn handle_proxy(&mut self) -> anyhow::Result<()> {
-        let stream = &mut self.inner;
-        let trojan = self.store.get_trojan();
-
-        match trojan.local_addr {
-            Some(ref local_addr) => {
-                info!("requested proxy local {}", local_addr);
-                let mut local_ts = TcpStream::connect(local_addr)
-                    .await
-                    .context(format!("Proxy can't connect addr {}", local_addr))?;
-                debug!("Proxy connect success {:?}", &trojan.local_addr);
-
-                copy_bidirectional(stream, &mut local_ts).await.ok();
-            }
-            None => {
-                info!("response not found");
-                resp_html(stream).await
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn handle_rathole(&mut self) -> anyhow::Result<()> {
-        let stream = &mut self.inner;
-        let _ = stream.drain();
-        let _crlf = stream.read_u16().await?;
-        let hash_str = self
-            .hash
-            .clone()
-            .ok_or_else(|| anyhow!("rathole hash empty!"))?;
-        let (mut dispatcher, cs) = Dispatcher::new(stream, hash_str.clone());
-        self.store.set_cmd_sender(cs).await;
-
-        dispatcher.dispatch().await.ok();
-
-        self.store.remove_cmd_sender(&hash_str).await;
-        Ok(())
+    let auth_handler = AuthHandler::new(&config.auth);
+    let store = ServerStore::from(config);
+    State {
+        acceptor: Arc::new(acceptor),
+        auth_handler: Arc::new(auth_handler),
+        store: Arc::new(store),
     }
 }
 
 pub enum ConnType {
-    Trojan,
-    Rathole,
-    Proxy,
+    Trojan(String),
+    Rathole(String),
+    Masquerade,
 }
 
-async fn resp_html<T: AsyncRead + AsyncWrite + Unpin>(stream: &mut T) {
-    stream
-        .write_all(
-            &b"HTTP/1.0 404 Not Found\r\n\
-                Content-Type: text/plain; charset=utf-8\r\n\
-                Content-length: 13\r\n\r\n\
-                404 Not Found"[..],
-        )
+async fn server_handle(ts: TcpStream, state: State) -> anyhow::Result<()> {
+    let peer_addr = ts.peer_addr()?;
+    let ts = state.acceptor.accept(ts).await?;
+    let mut peek_ts = PeekableStream::new(ts);
+    match detect_head(&mut peek_ts, &state).await? {
+        ConnType::Trojan(user) => {
+            TrojanConnection::new(peek_ts, user, peer_addr)
+                .handle()
+                .await
+        }
+        ConnType::Rathole(hash) => handle_rathole(peek_ts, hash, state.store).await,
+        ConnType::Masquerade => MasqueradeConnection::new(peek_ts).handle().await,
+    }
+}
+
+async fn detect_head(
+    ts: &mut PeekableStream<MaybeTlsStream<TcpStream>>,
+    state: &State,
+) -> anyhow::Result<ConnType> {
+    let head = proto::trojan::Request::peek_head(ts)
         .await
-        .unwrap();
+        .context("Server peek head failed")?;
+    if head.len() < 56 {
+        debug!("detect is masquerade");
+        return Ok(ConnType::Masquerade);
+    }
+
+    let hash_str = String::from_utf8(head).context("Trojan hash to string failed")?;
+    if let Some(u) = state.auth_handler.auth(&hash_str).await {
+        debug!("detect is trojan");
+        Ok(ConnType::Trojan(u))
+    } else if state.store.has_rathole(&hash_str) {
+        debug!("detect is rathole");
+        Ok(ConnType::Rathole(hash_str))
+    } else {
+        debug!("detect is masquerade");
+        Ok(ConnType::Masquerade)
+    }
+}
+
+async fn handle_rathole<T>(ts: T, hash: String, store: Arc<ServerStore>) -> anyhow::Result<()>
+where
+    T: AsyncRead + AsyncWrite + AsyncPeek + Unpin,
+{
+    let mut stream = ts;
+    let _ = stream.drain();
+    let _crlf = stream.read_u16().await?;
+    let (mut dispatcher, cs) = Dispatcher::new(stream, hash.clone());
+    store.set_cmd_sender(cs).await;
+
+    dispatcher.dispatch().await.ok();
+
+    store.remove_cmd_sender(&hash).await;
+    Ok(())
 }

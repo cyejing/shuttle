@@ -1,0 +1,7 @@
+server: localhost:4845
+auth: your_password
+proxy: 
+  listen: 0.0.0.0:1082
+  mode: trojan
+tls:
+  insecure: true

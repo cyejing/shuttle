@@ -3,9 +3,8 @@ use std::path::PathBuf;
 use log::{error, info};
 use shuttle::{
     client::{start_proxy, start_rathole},
-    config::{ClientConfig, ServerConfig},
+    config::{self},
     rathole::dispatcher::Dispatcher,
-    store::ServerStore,
 };
 use tokio::{io::AsyncWriteExt, net::TcpListener};
 
@@ -29,21 +28,18 @@ pub async fn start_command_server() {
 
 #[allow(dead_code)]
 pub async fn start_server(path: &str) {
-    let config = ServerConfig::load(Option::Some(PathBuf::from(path)));
-
-    let store = ServerStore::from(&config);
-    let addr = config.addrs.first().unwrap();
-    shuttle::server::start_server(addr, store.clone()).await;
+    let config = config::load_server_config(Option::Some(PathBuf::from(path)));
+    shuttle::server::start_server(&config).await;
 }
 
 #[allow(dead_code)]
-pub async fn start_client(path: &str) {
-    let cc = ClientConfig::load(Option::Some(PathBuf::from(path)));
-    match cc.run_type.as_str() {
+pub async fn start_client(t: &str, path: &str) {
+    let cc = config::load_client_config(Option::Some(PathBuf::from(path)));
+    match t {
         "proxy" => start_proxy(cc).await,
         "rathole" => start_rathole(cc).await,
-        _ => panic!("unknown run type : {}", cc.run_type),
-    }
+        _ => panic!("unknown run type : {t}"),
+    };
 }
 
 #[allow(dead_code)]

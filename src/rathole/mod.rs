@@ -9,7 +9,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
 use crate::CRLF;
-use crate::config::ClientConfig;
+use crate::config::HoleConfig;
 use crate::rathole::cmd::Command;
 use crate::rathole::cmd::exchange::Exchange;
 use crate::rathole::cmd::hole::Hole;
@@ -26,35 +26,36 @@ pub mod frame;
 pub type ReqChannel = Option<oneshot::Sender<anyhow::Result<()>>>;
 pub type CommandChannel = (u64, Command, ReqChannel);
 
-pub async fn start_rathole(cc: ClientConfig) -> anyhow::Result<()> {
-    let remote_addr = &cc.remote_addr;
+pub async fn start_rathole(
+    remote_addr: &str,
+    invalid_certs: bool,
+    hash: String,
+    holes: &Vec<HoleConfig>,
+) -> anyhow::Result<()> {
     let stream = timeout(Duration::from_secs(10), TcpStream::connect(remote_addr))
         .await
         .context("Connect remote timeout")?
         .context(format!("Can't connect remote addr {}", remote_addr))?;
 
     info!("Rathole connect remote {} success", remote_addr);
-    if cc.ssl_enable {
-        let domain = make_server_name(remote_addr)?;
-        let tls_stream = timeout(
-            Duration::from_secs(10),
-            make_tls_connector(cc.invalid_certs).connect(domain, stream),
-        )
-        .await
-        .context("Connect remote tls timeout")?
-        .context("Connect remote tls failed")?;
-        handle(tls_stream, cc).await
-    } else {
-        handle(stream, cc).await
-    }
+    let domain = make_server_name(remote_addr)?;
+    let tls_stream = timeout(
+        Duration::from_secs(10),
+        make_tls_connector(invalid_certs).connect(domain, stream),
+    )
+    .await
+    .context("Connect remote tls timeout")?
+    .context("Connect remote tls failed")?;
+    handle(tls_stream, hash, holes).await
 }
 
 async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     mut stream: T,
-    cc: ClientConfig,
+    hash: String,
+    holes: &Vec<HoleConfig>,
 ) -> anyhow::Result<()> {
     let mut buf: Vec<u8> = vec![];
-    buf.extend_from_slice(cc.hash.as_bytes());
+    buf.extend_from_slice(hash.as_bytes());
     buf.extend_from_slice(&CRLF);
 
     timeout(Duration::from_secs(10), stream.write_all(buf.as_slice()))
@@ -62,7 +63,7 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         .context("Remote write shake hands timeout")?
         .context("Can't write rathole hash")?;
 
-    let (mut dispatcher, command_sender) = Dispatcher::new(stream, cc.hash);
+    let (mut dispatcher, command_sender) = Dispatcher::new(stream, hash);
 
     let (sx, rx) = oneshot::channel();
     tokio::spawn(async move { sx.send(dispatcher.dispatch().await) });
@@ -84,7 +85,7 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         }
     });
 
-    for hole in cc.holes {
+    for hole in holes {
         let open_proxy =
             Command::Hole(Hole::new(hole.remote_addr.clone(), hole.local_addr.clone()));
         timeout(

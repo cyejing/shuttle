@@ -1,0 +1,7 @@
+server: wss://localhost:4846/fly
+auth: your_password
+proxy:
+  listen: 0.0.0.0:1082
+  mode: websocket
+tls:
+  insecure: true

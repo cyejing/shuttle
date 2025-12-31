@@ -1,80 +1,55 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use itertools::Itertools;
 use tokio::sync::RwLock;
 
-use crate::config::{RatHole, ServerConfig, Trojan};
+use crate::config::{RatHole, ServerConfig};
 use crate::rathole::context::CommandSender;
 
-#[derive(Debug, Clone)]
 pub struct ServerStore {
-    inner: Arc<Inner>,
-}
-
-#[derive(Debug)]
-struct Inner {
     cmd_map: RwLock<HashMap<String, CommandSender>>,
-    trojan: Trojan,
-    rathole: RatHole,
+    rathole: Option<RatHole>,
 }
 
 impl ServerStore {
-    pub fn new(trojan: Trojan, rathole: RatHole) -> Self {
+    pub fn new(rathole: Option<RatHole>) -> Self {
         ServerStore {
-            inner: Arc::new(Inner {
-                cmd_map: RwLock::new(HashMap::new()),
-                trojan,
-                rathole,
-            }),
+            cmd_map: RwLock::new(HashMap::new()),
+            rathole,
         }
     }
 
-    pub(crate) fn get_trojan(&self) -> Trojan {
-        self.inner.trojan.clone()
-    }
-
-    pub(crate) fn get_rahole(&self) -> RatHole {
-        self.inner.rathole.clone()
+    pub(crate) fn has_rathole(&self, hash: &str) -> bool {
+        match &self.rathole {
+            Some(h) => h.password_hash.contains_key(hash),
+            None => false,
+        }
     }
 
     pub(crate) async fn set_cmd_sender(&self, sender: CommandSender) {
-        self.inner
-            .cmd_map
-            .write()
-            .await
-            .insert(sender.get_hash(), sender);
+        self.cmd_map.write().await.insert(sender.get_hash(), sender);
     }
 
     #[allow(dead_code)]
     pub(crate) async fn get_cmd_sender(&self, hash: &String) -> Option<CommandSender> {
-        self.inner.cmd_map.read().await.get(hash).cloned()
+        self.cmd_map.read().await.get(hash).cloned()
     }
 
     #[allow(dead_code)]
     pub(crate) async fn list_cmd_sender(&self) -> Vec<CommandSender> {
-        self.inner
-            .cmd_map
-            .read()
-            .await
-            .values()
-            .cloned()
-            .collect_vec()
+        self.cmd_map.read().await.values().cloned().collect_vec()
     }
 
     pub(crate) async fn remove_cmd_sender(&self, hash: &String) {
-        let _r = self.inner.cmd_map.write().await.remove(hash);
+        let _r = self.cmd_map.write().await.remove(hash);
     }
 }
 
 impl From<&ServerConfig> for ServerStore {
     fn from(sc: &ServerConfig) -> Self {
         ServerStore {
-            inner: Arc::new(Inner {
-                cmd_map: RwLock::new(HashMap::new()),
-                trojan: sc.trojan.clone(),
-                rathole: sc.rathole.clone(),
-            }),
+            cmd_map: RwLock::new(HashMap::new()),
+            rathole: sc.rathole.clone(),
         }
     }
 }

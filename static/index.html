@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en" class="bg-gray-600">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Websocket status page</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+
+  <body>
+    <div class="m-0 flex h-screen w-screen flex-col justify-evenly">
+      <div class="flex items-center justify-around text-center">
+        <div class="flex max-w-sm flex-col overflow-hidden rounded-lg transition blur-md min-w-56">
+          <div class="flex-shrink-0 bg-gray-800 p-5 text-slate-50">Current API status</div>
+          <div
+            id="is_ok"
+            class="flex flex-1 flex-col justify-between bg-gray-500 p-6 text-xl font-bold uppercase"
+          ></div>
+        </div>
+        <div class="flex max-w-sm flex-col overflow-hidden rounded-lg transition blur-md min-w-56">
+          <div class="flex-shrink-0 bg-gray-800 p-5 text-slate-50">Last check time</div>
+          <div
+            id="dateTime"
+            class="flex flex-1 flex-col justify-between bg-gray-500 p-6 text-xl font-bold"
+          ></div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-around text-center">
+        <div class="flex max-w-sm flex-col overflow-hidden rounded-lg transition blur-md min-w-48">
+          <div class="flex-shrink-0 bg-gray-800 p-5 text-slate-50">Connections</div>
+          <div
+            id="conns_count"
+            class="flex flex-1 flex-col justify-between bg-gray-500 p-6 text-xl font-bold"
+          ></div>
+        </div>
+        <div class="flex max-w-sm flex-col overflow-hidden rounded-lg transition blur-md min-w-48">
+          <div class="flex-shrink-0 bg-gray-800 p-5 text-slate-50">traffic up</div>
+          <div
+            id="up_count"
+            class="flex flex-1 flex-col justify-between bg-gray-500 p-6 text-xl font-bold"
+          ></div>
+        </div>
+        <div class="flex max-w-sm flex-col overflow-hidden rounded-lg transition blur-md min-w-48">
+          <div class="flex-shrink-0 bg-gray-800 p-5 text-slate-50">traffic down</div>
+          <div
+            id="down_count"
+            class="flex flex-1 flex-col justify-between bg-gray-500 p-6 text-xl font-bold"
+          ></div>
+        </div>
+      </div>
+    </div>
+    <button
+      id="open"
+      class="absolute scale-105 rounded bg-gray-800 p-2 text-2xl text-slate-50 shadow-lg shadow-slate-800 transition hover:scale-100 hover:shadow-md"
+    >
+      Open connection
+    </button>
+
+    <script type="text/javascript">
+      const is_ok = document.querySelector("#is_ok");
+      const dateTime = document.querySelector("#dateTime");
+      const conns_count = document.querySelector("#conns_count");
+      const up_count = document.querySelector("#up_count");
+      const down_count = document.querySelector("#down_count");
+      const button = document.querySelector("button");
+
+      function track() {
+        const proto = location.protocol.startsWith("https") ? "wss" : "ws";
+        const websocket = new WebSocket(`${proto}://${window.location.host}/clients`);
+
+        websocket.onopen = () => {
+          console.log("connection opened");
+          document
+            .querySelectorAll("body > div > div > div")
+            .forEach((e) => e.classList.remove("blur-md"));
+          document.querySelector("body > button").classList.add("hidden");
+          websocket.send("ping");
+        };
+
+        websocket.onclose = () => {
+          console.log("connection closed");
+          document.querySelectorAll("body > div > div").forEach((e) => e.classList.add("blur-md"));
+          document.querySelector("body > button").classList.remove("hidden");
+          setTimeout(function () {
+            track();
+          }, 3000);
+        };
+
+        websocket.onmessage = (e) => {
+          const response = JSON.parse(e.data);
+
+          if (response.is_up) {
+            is_ok.textContent = "up";
+            is_ok.classList.add("text-green-600");
+            is_ok.classList.remove("text-rose-700");
+          } else {
+            is_ok.textContent = "down";
+            is_ok.classList.add("text-rose-700");
+            is_ok.classList.remove("text-green-600");
+          }
+
+          dateTime.textContent = new Date(response.dateTime).toLocaleString();
+          conns_count.textContent = response.conn_count;
+          up_count.textContent = calcTraffic(response.up_count);
+          down_count.textContent = calcTraffic(response.down_count);
+          setTimeout(function () {
+            websocket.send("ping");
+          }, 1000);
+        };
+      }
+
+      function calcTraffic(v) {
+        if (v > 1024 * 1024) {
+          return Math.ceil(v / 1024 / 1024) + " MB";
+        } else if (v > 0) {
+          return Math.ceil(v / 1024) + " KB";
+        } else {
+          return v;
+        }
+      }
+
+      track();
+      button.addEventListener("click", track);
+    </script>
+  </body>
+</html>
