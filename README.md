@@ -19,19 +19,19 @@ Connect to networks without pain
             │               │
             │          ┌────▼─────┐
             │          │  local   │
-            │          │ shuttlec │
+            │          │  client  │
             │          └────┬─────┘
             │               │
     ┌───────▼───────────────▼────────┐
     │                                │
-    │     public server shuttles     │
+    │     public shuttle server      │
     │                                │
     └───────┬───────────────┬────────┘
             │               │
             │               │
        ┌────▼─────┐    ┌────▼─────┐
        │   LAN    │    │ internet │
-       │ shuttlec │    └──────────┘
+       │  client  │    └──────────┘
        └──────────┘
 
 ## Download
@@ -44,12 +44,12 @@ Connect to networks without pain
 
 #### Start Server
 
-`./shuttles examples/shuttles.yaml`
+`./shuttle server -c examples/server.yaml`
 
 配置参数
 
 ```yaml
-#example/shuttles.yaml
+#example/server.yaml
 addrs:
   - addr: 0.0.0.0:4845
     cert: examples/server.crt # 最好使用正式域名证书的方式
@@ -62,7 +62,7 @@ trojan:
 
 #### Start Client
 
-`./shuttlec examples/shuttlec-proxy.yaml`
+`./shuttle examples/client-proxy.yaml`
 
 配置参数
 
@@ -85,12 +85,12 @@ Enjoy
 
 #### Start Server
 
-`./shuttles examples/shuttles.yaml`
+`./shuttle examples/server.yaml`
 
 配置参数
 
 ```yaml
-#example/shuttles.yaml
+#example/server.yaml
 addrs:
   - addr: 0.0.0.0:4845
     cert: examples/server.crt
@@ -102,7 +102,7 @@ rathole:
 
 #### Start Client
 
-`./shuttlec examples/shuttlec-rathole.yaml`
+`./shuttle examples/client-rathole.yaml`
 
 配置参数
 

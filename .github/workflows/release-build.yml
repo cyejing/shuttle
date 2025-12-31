@@ -37,13 +37,7 @@ jobs:
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             name: shuttle-aarch64-unknown-linux-musl.tgz
-          - os: ubuntu-latest
-            target: i686-unknown-linux-musl
-            name: shuttle-i686-unknown-linux-musl.tgz
-          - os: ubuntu-latest
-            target: armv7-unknown-linux-musleabihf
-            name: shuttle-armv7-unknown-linux-musleabihf.tgz
-        
+                            
           - os: macOS-latest
             target: x86_64-apple-darwin
             name: shuttle-x86_64-apple-darwin.tgz
@@ -54,9 +48,6 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: shuttle-x86_64-pc-windows-msvc.zip
-          - os: windows-latest
-            target: i686-pc-windows-msvc
-            name: shuttle-i686-pc-windows-msvc.zip
             
     permissions:
       contents: write
@@ -90,21 +81,20 @@ jobs:
         run: |
           xcopy examples target\${{ matrix.target }}\release\examples /s /e /y /i
           cd target/${{ matrix.target }}/release
-          strip shuttles.exe
-          strip shuttlec.exe
-          7z a ../../../${{ matrix.name }} shuttles.exe shuttlec.exe examples
+          strip shuttle.exe
+          7z a ../../../${{ matrix.name }} shuttle.exe examples
           cd -
       - name: Post Build | Prepare artifacts [unix]
         if: matrix.os != 'windows-latest'
         run: |
           cp -r examples target/${{ matrix.target }}/release
           cd target/${{ matrix.target }}/release
-          strip shuttles && strip shuttlec || true
-          tar czvf ../../../${{ matrix.name }} shuttles shuttlec examples
+          strip shuttle || true
+          tar czvf ../../../${{ matrix.name }} shuttle examples
           cd -
 
       - name: Deploy | Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
           path: ${{ matrix.name }}
