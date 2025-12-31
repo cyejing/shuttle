@@ -129,7 +129,7 @@ async fn fly(mut stream: WebSocket, state: AppState) {
                             }
                         }
                         Err(e) => {
-                            warn!("dial remote failed. err: {}", e);
+                            warn!("websocket dial remote failed. {e:?}");
                         }
                     }
                 } else {

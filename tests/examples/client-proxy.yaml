@@ -1,6 +1,7 @@
-run_type: proxy
-proxy_addr: 127.0.0.1:4082
-remote_addr: 127.0.0.1:4982
-ssl_enable: true
-invalid_certs: true
-password: sQtfRnfhcNoZYZh1wY9u
+server: 127.0.0.1:4982
+tls:
+  insecure: true
+proxy: 
+  listen: 0.0.0.0:4082
+  auth: sQtfRnfhcNoZYZh1wY9u
+  mode: trojan

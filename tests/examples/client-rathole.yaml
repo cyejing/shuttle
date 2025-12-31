@@ -1,10 +1,9 @@
-run_type: rathole
-remote_addr: 127.0.0.1:4982
-ssl_enable: true
-invalid_certs: true
-password: 58JCEmvcBkRAk1XkK1iH
-
-holes:
-  - name: test
-    remote_addr: 127.0.0.1:6788
-    local_addr: 127.0.0.1:6789
+server: 127.0.0.1:4982
+tls:
+  insecure: true
+hole:
+  auth: 58JCEmvcBkRAk1XkK1iH
+  holes:
+    - name: test
+      remote_addr: 127.0.0.1:6788
+      local_addr: 127.0.0.1:6789

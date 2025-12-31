@@ -6,15 +6,14 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
+use crate::auth::sha224;
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct ArgsConfig {
     // running mode
     #[command(subcommand)]
     pub mode: Mode,
-
-    #[arg(short = 't', long, global = true)]
-    pub client_type: Option<ClientType>,
 
     /// config path
     #[arg(short = 'c', long, global = true)]
@@ -27,32 +26,61 @@ pub enum Mode {
     Client,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum ClientType {
-    Proxy,
-    Rathole,
-}
-
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ClientConfig {
     pub server: String,
-    pub auth: String,
-    pub proxy: ProxyConfig,
+    pub proxy: Option<ProxyConfig>,
     pub tls: Option<ClientTlsConfig>,
-
-    #[serde(default)]
-    pub holes: Vec<HoleConfig>,
+    pub hole: Option<HoleConfig>,
 }
 
 impl ClientConfig {
     pub fn insecure(&self) -> bool {
         self.tls.as_ref().map(|t| t.insecure).unwrap_or(true)
     }
+    pub fn get_proxy(&self) -> Option<(String, ProxyMode)> {
+        match self.proxy.clone() {
+            Some(p) => Some((p.listen, p.mode)),
+            None => None,
+        }
+    }
+    pub fn get_holes(&self) -> &Vec<HoleConfigItem> {
+        self.hole.as_ref().map(|h| &h.holes).expect("hole is None")
+    }
+    pub fn get_hole_auth_hash(&self) -> String {
+        self.hole
+            .as_ref()
+            .and_then(|h| h.auth_hash.as_ref())
+            .map(|h| h.to_string())
+            .unwrap()
+    }
+
+    pub fn get_proxy_auth_hash(&self) -> String {
+        self.proxy
+            .as_ref()
+            .and_then(|h| h.auth_hash.as_ref())
+            .map(|h| h.to_string())
+            .unwrap()
+    }
+
+    pub fn gen_auth_hash(&mut self) {
+        if let Some(mut proxy) = self.proxy.take() {
+            proxy.auth_hash = Some(sha224(&proxy.auth));
+            self.proxy = Some(proxy);
+        }
+        if let Some(mut hole) = self.hole.take() {
+            hole.auth_hash = Some(sha224(&hole.auth));
+            self.hole = Some(hole);
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyConfig {
     pub listen: String,
+    pub auth: String,
+    #[serde(skip)]
+    pub auth_hash: Option<String>,
     pub mode: ProxyMode,
 }
 
@@ -86,6 +114,16 @@ pub struct ServerConfig {
     pub masquerade: Option<MasqueradeConfig>,
 
     pub rathole: Option<RatHole>,
+}
+
+impl ServerConfig {
+    pub fn gen_rathole_hahs(&mut self) {
+        if let Some(mut rathole) = self.rathole.take() {
+            let password_hash = rathole.passwords.iter().map(|p| sha224(p)).collect();
+            rathole.password_hash = password_hash;
+            self.rathole = Some(rathole)
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -161,11 +199,19 @@ pub struct MasqueradeProxyConfig {
 pub struct RatHole {
     pub passwords: Vec<String>,
     #[serde(skip)]
-    pub password_hash: HashMap<String, String>,
+    pub password_hash: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HoleConfig {
+    pub auth: String,
+    #[serde(skip)]
+    pub auth_hash: Option<String>,
+    pub holes: Vec<HoleConfigItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HoleConfigItem {
     pub name: String,
     pub remote_addr: String,
     pub local_addr: String,
@@ -176,16 +222,20 @@ const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["server.yaml", "examples/server.y
 
 pub fn load_client_config(path: Option<PathBuf>) -> ClientConfig {
     let file = open_config_file(path, Vec::from(DEFAULT_CLIENT_CONFIG_PATH));
-    serde_yaml::from_reader(file)
+    let mut cc: ClientConfig = serde_yaml::from_reader(file)
         .context("Can't serde read config file")
-        .unwrap()
+        .unwrap();
+    cc.gen_auth_hash();
+    cc
 }
 
 pub fn load_server_config(path: Option<PathBuf>) -> ServerConfig {
     let file = open_config_file(path, Vec::from(DEFAULT_SERVER_CONFIG_PATH));
-    serde_yaml::from_reader(file)
+    let mut sc: ServerConfig = serde_yaml::from_reader(file)
         .context("Can't serde read config file")
-        .unwrap()
+        .unwrap();
+    sc.gen_rathole_hahs();
+    sc
 }
 
 fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {

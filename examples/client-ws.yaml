@@ -1,7 +1,8 @@
-server: wss://localhost:4846/fly
-auth: your_password
-proxy:
-  listen: 0.0.0.0:1082
-  mode: websocket
+server: wss://localhost:4846/fly # 服务器开启websocket 端口
 tls:
-  insecure: true
+  insecure: true # 不校验证书
+proxy:
+  listen: 0.0.0.0:1082 # 本地代理地址
+  auth: your_password
+  mode: websocket # 通信协议
+

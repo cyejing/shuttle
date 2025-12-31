@@ -21,7 +21,7 @@ impl ServerStore {
 
     pub(crate) fn has_rathole(&self, hash: &str) -> bool {
         match &self.rathole {
-            Some(h) => h.password_hash.contains_key(hash),
+            Some(h) => h.password_hash.iter().any(|h| h == hash),
             None => false,
         }
     }

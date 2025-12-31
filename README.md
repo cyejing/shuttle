@@ -50,14 +50,21 @@ Connect to networks without pain
 
 ```yaml
 #example/server.yaml
-addrs:
-  - addr: 0.0.0.0:4845
-    cert: examples/server.crt # 最好使用正式域名证书的方式
-    key: examples/server.key
-trojan:
-  local_addr: 127.0.0.1:80 #nginx伪装
-  passwords:
-    - sQtfRnfhcNoZYZh1wY9u
+listen: 0.0.0.0:4845
+tls:
+  cert: examples/server.crt # 最好使用正式域名证书的方式
+  key: examples/server.key # 最好使用正式域名证书的方式
+auth:
+  type: password
+  password: your_password # 修改为复杂密码
+masquerade: # 伪装 http 请求返回内容
+  type: string
+  string:
+    content: hello stupid world
+    headers:
+      content-type: text/plain
+      custom-stuff: ice cream so good
+    statusCode: 200
 ```
 
 #### Start Client
@@ -67,12 +74,13 @@ trojan:
 配置参数
 
 ```yaml
-run_type: proxy #运行类型 代理模式
-ssl_enable: true
-invalid_certs: true
-proxy_addr: 127.0.0.1:4080 #本地代理地址
-remote_addr: 127.0.0.1:4845 #服务器地址, 最好是域名
-password: sQtfRnfhcNoZYZh1wY9u #对应服务器密码
+server: localhost:4845
+tls:
+  insecure: true
+proxy: 
+  listen: 0.0.0.0:1082
+  auth: your_password
+  mode: trojan
 ```
 
 #### 使用
@@ -91,13 +99,21 @@ Enjoy
 
 ```yaml
 #example/server.yaml
-addrs:
-  - addr: 0.0.0.0:4845
-    cert: examples/server.crt
-    key: examples/server.key
-rathole:
+listen: 0.0.0.0:4845
+tls:
+  cert: examples/server.crt # 最好使用正式域名证书的方式
+  key: examples/server.key # 最好使用正式域名证书的方式
+rathole: # 内网穿透使用
   passwords:
-    - 58JCEmvcBkRAk1XkK1iH
+    - your_password_hole
+masquerade: # 伪装 http 请求返回内容
+  type: string
+  string:
+    content: hello stupid world
+    headers:
+      content-type: text/plain
+      custom-stuff: ice cream so good
+    statusCode: 200
 ```
 
 #### Start Client
@@ -107,15 +123,15 @@ rathole:
 配置参数
 
 ```yaml
-run_type: rathole
-ssl_enable: true
-remote_addr: 127.0.0.1:4845
-password: 58JCEmvcBkRAk1XkK1iH
-
-holes:
-  - name: ssh
-    remote_addr: 127.0.0.1:4022
-    local_addr: 127.0.0.1:22
+server: localhost:4845 # 服务器地址
+tls:
+  insecure: true # 不校验证书
+hole: # 可选 开启内网穿透功能
+  auth: your_password_hole
+  holes:
+    - name: ssh
+      remote_addr: 127.0.0.1:4022 # 开启服务器端口
+      local_addr: 127.0.0.1:22 # 穿透本地端口
 ```
 
 #### 使用

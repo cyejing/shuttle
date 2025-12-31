@@ -1,20 +1,20 @@
 listen: 0.0.0.0:4845
 tls:
-  cert: examples/server.crt
-  key: examples/server.key
+  cert: examples/server.crt # 最好使用正式域名证书的方式
+  key: examples/server.key # 最好使用正式域名证书的方式
 auth:
   type: password
-  password: your_password
-  userpass:
+  password: your_password # 修改为复杂密码
+  userpass: # 可选 多用户和密码的方式
     user1: pass1
     user2: pass2
     user3: pass3
 websocket:
-  listen: 0.0.0.0:4846
-traffic_stats:
+  listen: 0.0.0.0:4846 # 可选 开发 websocket 的方式，可以填充 header 避免特征检测
+traffic_stats: # 可选 查看流量统计
   listen: 127.0.0.1:4900
   secret: your_secret
-masquerade:
+masquerade: # 伪装 http 请求返回内容
   type: string
   string:
     content: hello stupid world
@@ -22,3 +22,6 @@ masquerade:
       content-type: text/plain
       custom-stuff: ice cream so good
     statusCode: 200
+rathole: # 内网穿透使用
+  passwords:
+    - your_password_hole

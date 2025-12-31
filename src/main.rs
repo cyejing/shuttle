@@ -1,7 +1,7 @@
 use clap::Parser;
 use shuttle::{
     client::{start_proxy, start_rathole},
-    config::{self, ArgsConfig, ClientType, Mode},
+    config::{self, ArgsConfig, Mode},
     server::{start_server, start_stats_server},
     setup::setup_log,
     websocket::start_websocket,
@@ -23,10 +23,8 @@ async fn main() {
         }
         Mode::Client => {
             let config = config::load_client_config(args.config);
-            match args.client_type {
-                Some(ClientType::Rathole) => start_rathole(config).await,
-                _ => start_proxy(config).await,
-            }
+            start_rathole(config.clone()).await;
+            start_proxy(config).await;
         }
     }
 

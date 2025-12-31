@@ -1,6 +1,6 @@
 [package]
 name = "shuttle"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2024"
 publish = false
 
@@ -37,6 +37,8 @@ futures = "0.3.28"
 rust-embed = "8.2"
 mime_guess = "2.0"
 
+[patch.crates-io]
+borer-core = { path = "../borer-core" }
 
 [dev-dependencies]
 reqwest = { version = "0.11", default-features=false, features = ["socks","rustls-tls"] }

@@ -1,7 +1,15 @@
-server: localhost:4845
-auth: your_password
-proxy: 
-  listen: 0.0.0.0:1082
-  mode: trojan
+server: localhost:4845 # 服务器地址
 tls:
-  insecure: true
+  insecure: true # 不校验证书
+proxy: 
+  listen: 0.0.0.0:1082 # 本地代理地址
+  auth: your_password
+  mode: trojan # 通信协议
+
+hole: # 可选 开启内网穿透功能
+  auth: your_password_hole
+  holes:
+    - name: ssh
+      remote_addr: 127.0.0.1:4022 # 开启服务器端口
+      local_addr: 127.0.0.1:22 # 穿透本地端口
+

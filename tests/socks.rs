@@ -7,8 +7,8 @@ async fn test_socks() {
     setup_log();
 
     common::start_web_server().await;
-    common::start_server("tests/examples/shuttles.yaml").await;
-    common::start_client("proxy", "tests/examples/shuttlec-proxy.yaml").await;
+    common::start_server("tests/examples/server.yaml").await;
+    common::start_client("proxy", "tests/examples/client-proxy.yaml").await;
 
     let client = reqwest::Client::builder()
         .proxy(reqwest::Proxy::http("socks5://127.0.0.1:4082").unwrap())

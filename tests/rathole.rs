@@ -15,8 +15,8 @@ mod common;
 async fn test_rathole_ping() {
     setup_log();
     common::start_command_server().await;
-    common::start_server("tests/examples/shuttles.yaml").await;
-    common::start_client("rathole", "tests/examples/shuttlec-rathole.yaml").await;
+    common::start_server("tests/examples/server.yaml").await;
+    common::start_client("rathole", "tests/examples/client-rathole.yaml").await;
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let stream = TcpStream::connect("127.0.0.1:6788").await.unwrap();

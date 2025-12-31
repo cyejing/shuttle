@@ -9,7 +9,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
 use crate::CRLF;
-use crate::config::HoleConfig;
+use crate::config::HoleConfigItem;
 use crate::rathole::cmd::Command;
 use crate::rathole::cmd::exchange::Exchange;
 use crate::rathole::cmd::hole::Hole;
@@ -28,9 +28,9 @@ pub type CommandChannel = (u64, Command, ReqChannel);
 
 pub async fn start_rathole(
     remote_addr: &str,
-    invalid_certs: bool,
     hash: String,
-    holes: &Vec<HoleConfig>,
+    insecure: bool,
+    holes: &Vec<HoleConfigItem>,
 ) -> anyhow::Result<()> {
     let stream = timeout(Duration::from_secs(10), TcpStream::connect(remote_addr))
         .await
@@ -41,7 +41,7 @@ pub async fn start_rathole(
     let domain = make_server_name(remote_addr)?;
     let tls_stream = timeout(
         Duration::from_secs(10),
-        make_tls_connector(invalid_certs).connect(domain, stream),
+        make_tls_connector(insecure).connect(domain, stream),
     )
     .await
     .context("Connect remote tls timeout")?
@@ -52,7 +52,7 @@ pub async fn start_rathole(
 async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     mut stream: T,
     hash: String,
-    holes: &Vec<HoleConfig>,
+    holes: &Vec<HoleConfigItem>,
 ) -> anyhow::Result<()> {
     let mut buf: Vec<u8> = vec![];
     buf.extend_from_slice(hash.as_bytes());
