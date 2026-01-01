@@ -69,7 +69,7 @@ masquerade: # 伪装 http 请求返回内容
 
 #### Start Client
 
-`./shuttle examples/client-proxy.yaml`
+`./shuttle client -c examples/client-proxy.yaml`
 
 配置参数
 
@@ -93,7 +93,7 @@ Enjoy
 
 #### Start Server
 
-`./shuttle examples/server.yaml`
+`./shuttle server -c examples/server.yaml`
 
 配置参数
 
@@ -118,7 +118,7 @@ masquerade: # 伪装 http 请求返回内容
 
 #### Start Client
 
-`./shuttle examples/client-rathole.yaml`
+`./shuttle client -c examples/client-rathole.yaml`
 
 配置参数
 
