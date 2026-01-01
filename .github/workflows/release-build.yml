@@ -20,6 +20,8 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
+          override: true
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v1
       - name: Run tests
         run: cargo test --verbose
@@ -62,6 +64,8 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
+          override: true
+          components: clippy, rustfmt
           target: ${{ matrix.target }}
       - name: Setup | Rustup
         run: rustup target add ${{ matrix.target }}
