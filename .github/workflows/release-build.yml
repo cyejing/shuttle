@@ -20,7 +20,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
       - uses: Swatinem/rust-cache@v1
       - name: Run tests
         run: cargo test --verbose
@@ -62,9 +61,6 @@ jobs:
       - name: Setup | Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
-          default: true
-          override: true
           profile: minimal
           target: ${{ matrix.target }}
       - name: Setup | Rustup
