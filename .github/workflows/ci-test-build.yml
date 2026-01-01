@@ -29,7 +29,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          override: true
       - name: Verify Rust version
         run: |
           rustc --version
@@ -56,7 +55,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          override: true
       - uses: Swatinem/rust-cache@v1
       - name: Run tests
         if: matrix.os != 'windows-latest'
