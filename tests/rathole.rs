@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use shuttle::{
@@ -13,7 +14,7 @@ mod common;
 
 #[tokio::test]
 async fn test_rathole_ping() {
-    setup_log();
+    setup_log(PathBuf::from("logs"));
     common::start_command_server().await;
     common::start_server("tests/examples/server.yaml").await;
     common::start_client("rathole", "tests/examples/client-rathole.yaml").await;

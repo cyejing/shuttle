@@ -28,6 +28,8 @@ pub enum Mode {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ClientConfig {
+    #[serde(default = "default_logs")]
+    pub logs: PathBuf,
     pub server: String,
     pub proxy: Option<ProxyConfig>,
     pub tls: Option<ClientTlsConfig>,
@@ -106,6 +108,8 @@ pub struct ClientTlsConfig {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerConfig {
+    #[serde(default = "default_logs")]
+    pub logs: PathBuf,
     pub listen: String,
     pub tls: Option<ServerTlsConfig>,
     pub auth: AuthConfig,
@@ -264,6 +268,10 @@ fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_logs() -> PathBuf {
+    PathBuf::from("logs")
 }
 
 #[cfg(test)]

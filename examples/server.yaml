@@ -1,3 +1,4 @@
+logs: /Users/chenyejing/project/shuttle/logs/app2
 listen: 0.0.0.0:4845
 tls:
   cert: examples/server.crt # 最好使用正式域名证书的方式
@@ -10,7 +11,7 @@ auth:
     user2: pass2
     user3: pass3
 websocket:
-  listen: 0.0.0.0:4846 # 可选 开发 websocket 的方式，可以填充 header 避免特征检测
+  listen: 0.0.0.0:4846 # 可选 开启 websocket 的方式，可以填充 header 避免特征检测
 traffic_stats: # 可选 查看流量统计
   listen: 127.0.0.1:4900
   secret: your_secret

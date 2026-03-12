@@ -1,10 +1,12 @@
 mod common;
+
 use log::info;
 use shuttle::setup::setup_log;
+use std::path::PathBuf;
 
 #[tokio::test]
 async fn test_socks() {
-    setup_log();
+    setup_log(PathBuf::from("logs"));
 
     common::start_web_server().await;
     common::start_server("tests/examples/server.yaml").await;

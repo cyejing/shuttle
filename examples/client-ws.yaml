@@ -1,4 +1,4 @@
-server: wss://localhost:4846/fly # 服务器开启websocket 端口
+server: wss://localhost:4846/fly # 服务器开启 websocket 端口
 tls:
   insecure: true # 不校验证书
 proxy:

@@ -9,12 +9,12 @@ use shuttle::{
 
 #[tokio::main]
 async fn main() {
-    setup_log();
     let args = ArgsConfig::parse();
 
     match args.mode {
         Mode::Server => {
             let config = config::load_server_config(args.config);
+            setup_log(config.logs.clone());
             start_server(&config).await;
             start_stats_server(&config);
             if let Some(ws) = &config.websocket {
@@ -23,6 +23,7 @@ async fn main() {
         }
         Mode::Client => {
             let config = config::load_client_config(args.config);
+            setup_log(config.logs.clone());
             start_rathole(config.clone()).await;
             start_proxy(config).await;
         }

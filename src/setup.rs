@@ -1,4 +1,5 @@
 use rolling_file::{BasicRollingFileAppender, RollingConditionBasic};
+use std::path::PathBuf;
 use std::{fs, mem::forget};
 use uuid::Uuid;
 
@@ -13,20 +14,22 @@ use tracing_subscriber::{
     util::SubscriberInitExt as _,
 };
 
-pub fn setup_log() {
+pub fn setup_log(log_path: PathBuf) {
+    let app_log = log_path.join("app.log");
+    let error_log = log_path.join("error.log");
     let timer = OffsetTime::new(
         offset!(+8),
         format_description!(
             "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]+[offset_hour][offset_minute]"
         ),
     );
-    if fs::metadata("logs").is_err() {
-        fs::create_dir_all("logs").expect("create logs dir failed");
+    if fs::metadata(&log_path).is_err() {
+        fs::create_dir_all(&log_path).expect("create logs dir failed");
     }
 
     let (app_aped, g1) = tracing_appender::non_blocking(
         BasicRollingFileAppender::new(
-            "logs/app.log",
+            app_log,
             RollingConditionBasic::new()
                 .daily()
                 .max_size(1024 * 1024 * 1024),
@@ -36,7 +39,7 @@ pub fn setup_log() {
     );
     let (error_aped, g2) = tracing_appender::non_blocking(
         BasicRollingFileAppender::new(
-            "logs/error.log",
+            error_log,
             RollingConditionBasic::new()
                 .daily()
                 .max_size(1024 * 1024 * 512),

@@ -1,6 +1,8 @@
 mod common;
+
 use log::info;
 use shuttle::setup::setup_log;
+use std::path::PathBuf;
 use tokio::io;
 
 use shuttle::rathole::cmd::Command;
@@ -10,7 +12,7 @@ use tokio::net::TcpStream;
 
 #[tokio::test]
 async fn test_ping() {
-    setup_log();
+    setup_log(PathBuf::from("logs"));
     common::start_command_server().await;
     let stream = TcpStream::connect("127.0.0.1:6789").await.unwrap();
     let (r, w) = io::split(stream);
