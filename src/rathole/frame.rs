@@ -400,3 +400,305 @@ impl fmt::Display for ParseError {
 }
 
 impl std::error::Error for ParseError {}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn test_frame_simple_parse() {
+        let data = b"+hello\r\n";
+        let mut cursor = Cursor::new(data.as_slice());
+        let frame = Frame::parse(&mut cursor).unwrap();
+        assert!(frame == "hello");
+    }
+
+    #[test]
+    fn test_frame_error_parse() {
+        let data = b"-error message\r\n";
+        let mut cursor = Cursor::new(data.as_slice());
+        let frame = Frame::parse(&mut cursor).unwrap();
+        match frame {
+            Frame::Error(msg) => assert_eq!(msg, "error message"),
+            _ => panic!("expected error frame"),
+        }
+    }
+
+    #[test]
+    fn test_frame_integer_parse() {
+        let data = b":12345\r\n";
+        let mut cursor = Cursor::new(data.as_slice());
+        let frame = Frame::parse(&mut cursor).unwrap();
+        match frame {
+            Frame::Integer(val) => assert_eq!(val, 12345),
+            _ => panic!("expected integer frame"),
+        }
+    }
+
+    #[test]
+    fn test_frame_bulk_parse() {
+        let data = b"$5\r\nhello\r\n";
+        let mut cursor = Cursor::new(data.as_slice());
+        let frame = Frame::parse(&mut cursor).unwrap();
+        match frame {
+            Frame::Bulk(bytes) => assert_eq!(&bytes[..], b"hello"),
+            _ => panic!("expected bulk frame"),
+        }
+    }
+
+    #[test]
+    fn test_frame_bulk_null_parse() {
+        let data = b"$-1\r\n";
+        let mut cursor = Cursor::new(data.as_slice());
+        let frame = Frame::parse(&mut cursor).unwrap();
+        match frame {
+            Frame::Null => {}
+            _ => panic!("expected null frame"),
+        }
+    }
+
+    #[test]
+    fn test_frame_array_parse() {
+        let data = b"*2\r\n+hello\r\n:12345\r\n";
+        let mut cursor = Cursor::new(data.as_slice());
+        let frame = Frame::parse(&mut cursor).unwrap();
+        match frame {
+            Frame::Array(arr) => {
+                assert_eq!(arr.len(), 2);
+                assert!(arr[0] == "hello");
+                match &arr[1] {
+                    Frame::Integer(val) => assert_eq!(*val, 12345),
+                    _ => panic!("expected integer frame"),
+                }
+            }
+            _ => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn test_frame_check_simple() {
+        let data = b"+hello\r\n";
+        let mut cursor = Cursor::new(data.as_slice());
+        assert!(Frame::check(&mut cursor).is_ok());
+    }
+
+    #[test]
+    fn test_frame_check_incomplete() {
+        let data = b"+hello";
+        let mut cursor = Cursor::new(data.as_slice());
+        assert!(matches!(Frame::check(&mut cursor), Err(Error::Incomplete)));
+    }
+
+    #[test]
+    fn test_frame_check_invalid_type() {
+        let data = b"#invalid\r\n";
+        let mut cursor = Cursor::new(data.as_slice());
+        let result = Frame::check(&mut cursor);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_frame_check_bulk_incomplete() {
+        let data = b"$5\r\nhello";
+        let mut cursor = Cursor::new(data.as_slice());
+        assert!(matches!(Frame::check(&mut cursor), Err(Error::Incomplete)));
+    }
+
+    #[test]
+    fn test_frame_check_array() {
+        let data = b"*2\r\n+hello\r\n:12345\r\n";
+        let mut cursor = Cursor::new(data.as_slice());
+        assert!(Frame::check(&mut cursor).is_ok());
+    }
+
+    #[test]
+    fn test_parse_new_from_array_frame() {
+        let frame = Frame::Array(vec![
+            Frame::Bulk(Bytes::from("ping")),
+            Frame::Bulk(Bytes::from("message")),
+        ]);
+        let mut parse = Parse::new(frame).unwrap();
+        assert!(parse.next_part().is_ok());
+    }
+
+    #[test]
+    fn test_parse_new_from_non_array_error() {
+        let frame = Frame::Simple("hello".to_string());
+        let result = Parse::new(frame);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_next_string_from_simple() {
+        let mut parse = Parse::new(Frame::Array(vec![Frame::Simple("test".to_string())])).unwrap();
+        let result = parse.next_string().unwrap();
+        assert_eq!(result, "test");
+    }
+
+    #[test]
+    fn test_parse_next_string_from_bulk() {
+        let mut parse = Parse::new(Frame::Array(vec![Frame::Bulk(Bytes::from("bulk"))])).unwrap();
+        let result = parse.next_string().unwrap();
+        assert_eq!(result, "bulk");
+    }
+
+    #[test]
+    fn test_parse_next_string_error() {
+        let mut parse = Parse::new(Frame::Array(vec![Frame::Integer(123)])).unwrap();
+        let result = parse.next_string();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_next_int_from_integer() {
+        let mut parse = Parse::new(Frame::Array(vec![Frame::Integer(42)])).unwrap();
+        let result = parse.next_int().unwrap();
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn test_parse_next_int_from_simple() {
+        let mut parse = Parse::new(Frame::Array(vec![Frame::Simple("123".to_string())])).unwrap();
+        let result = parse.next_int().unwrap();
+        assert_eq!(result, 123);
+    }
+
+    #[test]
+    fn test_parse_next_int_invalid() {
+        let mut parse = Parse::new(Frame::Array(vec![Frame::Simple("abc".to_string())])).unwrap();
+        let result = parse.next_int();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_next_bytes() {
+        let mut parse = Parse::new(Frame::Array(vec![Frame::Bulk(Bytes::from("data"))])).unwrap();
+        let result = parse.next_bytes().unwrap();
+        assert_eq!(result, Bytes::from("data"));
+    }
+
+    #[test]
+    fn test_parse_finish_success() {
+        let mut parse = Parse::new(Frame::Array(vec![])).unwrap();
+        assert!(parse.finish().is_ok());
+    }
+
+    #[test]
+    fn test_parse_finish_with_extra_data() {
+        let mut parse = Parse::new(Frame::Array(vec![
+            Frame::Simple("first".to_string()),
+            Frame::Simple("second".to_string()),
+        ]))
+        .unwrap();
+        let _ = parse.next_part().unwrap();
+        let result = parse.finish();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_frame_partial_eq_simple() {
+        assert_eq!(Frame::Simple("hello".to_string()), "hello");
+    }
+
+    #[test]
+    fn test_frame_partial_eq_bulk() {
+        assert_eq!(Frame::Bulk(Bytes::from("hello")), "hello");
+    }
+
+    #[test]
+    fn test_frame_partial_eq_not_equal() {
+        assert_ne!(Frame::Simple("hello".to_string()), "world");
+    }
+
+    #[test]
+    fn test_frame_display_simple() {
+        let frame = Frame::Simple("hello".to_string());
+        assert_eq!(format!("{}", frame), "hello");
+    }
+
+    #[test]
+    fn test_frame_display_error() {
+        let frame = Frame::Error("error msg".to_string());
+        assert_eq!(format!("{}", frame), "error: error msg");
+    }
+
+    #[test]
+    fn test_frame_display_integer() {
+        let frame = Frame::Integer(42);
+        assert_eq!(format!("{}", frame), "42");
+    }
+
+    #[test]
+    fn test_frame_display_null() {
+        let frame = Frame::Null;
+        assert_eq!(format!("{}", frame), "(nil)");
+    }
+
+    #[test]
+    fn test_frame_display_array() {
+        let frame = Frame::Array(vec![Frame::Simple("a".to_string()), Frame::Integer(1)]);
+        assert_eq!(format!("{}", frame), "[a, 1]");
+    }
+
+    #[test]
+    fn test_frame_array_creation() {
+        let mut frame = Frame::array();
+        frame.push_frame(Frame::Simple("test".to_string()));
+        match frame {
+            Frame::Array(vec) => assert_eq!(vec.len(), 1),
+            _ => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn test_frame_push_bulk() {
+        let mut frame = Frame::array();
+        frame.push_bulk(Bytes::from("bulk"));
+        match frame {
+            Frame::Array(vec) => {
+                assert_eq!(vec.len(), 1);
+                match &vec[0] {
+                    Frame::Bulk(bytes) => assert_eq!(&bytes[..], b"bulk"),
+                    _ => panic!("expected bulk frame"),
+                }
+            }
+            _ => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn test_frame_push_int() {
+        let mut frame = Frame::array();
+        frame.push_int(100);
+        match frame {
+            Frame::Array(vec) => {
+                assert_eq!(vec.len(), 1);
+                match &vec[0] {
+                    Frame::Integer(val) => assert_eq!(*val, 100),
+                    _ => panic!("expected integer frame"),
+                }
+            }
+            _ => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn test_frame_push_req_id() {
+        let mut frame = Frame::array();
+        frame.push_bulk(Bytes::from("test"));
+        let result = frame.push_req_id(42);
+        match result {
+            Frame::Array(vec) => {
+                assert_eq!(vec.len(), 2);
+                assert!(vec[0] == "test");
+                match &vec[1] {
+                    Frame::Integer(val) => assert_eq!(*val, 42),
+                    _ => panic!("expected integer frame"),
+                }
+            }
+            _ => panic!("expected array"),
+        }
+    }
+}

@@ -5,7 +5,6 @@ use uuid::Uuid;
 
 use time::macros::{format_description, offset};
 use tracing::{Level, level_filters::LevelFilter};
-use tracing_log::LogTracer;
 
 use tracing_subscriber::{
     EnvFilter, Layer as _,
@@ -46,7 +45,6 @@ pub fn setup_log(log_path: impl AsRef<Path>) -> anyhow::Result<()> {
 
     let mut layers = Vec::new();
     let event_format = fmt::format()
-        .compact()
         .with_level(true)
         .with_target(false)
         .with_file(false)
@@ -84,7 +82,6 @@ pub fn setup_log(log_path: impl AsRef<Path>) -> anyhow::Result<()> {
         .boxed();
     layers.push(stdout);
 
-    let _ = LogTracer::init();
     tracing_subscriber::registry().with(layers).try_init()?;
 
     forget(g1);
@@ -99,18 +96,18 @@ fn default_env_filter() -> EnvFilter {
         .unwrap()
 }
 #[must_use]
-pub fn gen_traceid() -> String {
+pub fn gen_conn_id() -> String {
     let (_high, low) = Uuid::new_v4().as_u64_pair();
     format!("{low:016x}")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::gen_traceid;
+    use super::gen_conn_id;
 
     #[test]
     fn gen_traceid_returns_16_char_hex_string() {
-        let trace_id = gen_traceid();
+        let trace_id = gen_conn_id();
 
         assert_eq!(trace_id.len(), 16);
         assert!(trace_id.chars().all(|ch| ch.is_ascii_hexdigit()));
@@ -118,8 +115,8 @@ mod tests {
 
     #[test]
     fn gen_traceid_has_low_collision_risk() {
-        let first = gen_traceid();
-        let second = gen_traceid();
+        let first = gen_conn_id();
+        let second = gen_conn_id();
 
         assert_ne!(first, second);
     }

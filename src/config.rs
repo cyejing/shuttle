@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
@@ -34,6 +35,18 @@ pub struct ClientConfig {
     pub proxy: Option<ProxyConfig>,
     pub tls: Option<ClientTlsConfig>,
     pub hole: Option<HoleConfig>,
+    #[serde(default = "default_connect_timeout")]
+    pub connect_timeout: u64,
+    #[serde(default = "default_proxy_list")]
+    pub proxy_list: PathBuf,
+}
+
+fn default_connect_timeout() -> u64 {
+    3
+}
+
+fn default_proxy_list() -> PathBuf {
+    PathBuf::from("proxy.txt")
 }
 
 impl ClientConfig {
@@ -64,6 +77,10 @@ impl ClientConfig {
             .and_then(|h| h.auth_hash.as_ref())
             .map(std::string::ToString::to_string)
             .unwrap()
+    }
+
+    pub fn connect_timeout_duration(&self) -> Duration {
+        Duration::from_secs(self.connect_timeout)
     }
 
     pub fn gen_auth_hash(&mut self) {

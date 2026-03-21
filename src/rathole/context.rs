@@ -193,3 +193,144 @@ impl IdAdder {
         *i
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use tokio::sync::{mpsc, oneshot};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_context_new_creates_shutdown_channel() {
+        let (tx, _rx) = mpsc::channel(1);
+        let sender = CommandSender::new("hash".to_string(), tx);
+        let context = Context::new(sender);
+
+        let mut rx = context.notify_shutdown.subscribe();
+        context.notify_shutdown.send(()).ok();
+
+        assert!(rx.recv().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_context_set_and_get_req() {
+        let (tx, _rx) = mpsc::channel(1);
+        let sender = CommandSender::new("hash".to_string(), tx);
+        let mut context = Context::new(sender);
+
+        let (req_tx, _req_rx) = oneshot::channel::<anyhow::Result<()>>();
+        context.current_req_id = Some(1);
+        context.set_req(Some(req_tx)).await;
+
+        context.current_req_id = Some(1);
+        let retrieved = context.get_req().await;
+        assert!(retrieved.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_context_set_and_get_conn_sender() {
+        let (tx, _rx) = mpsc::channel(1);
+        let sender = CommandSender::new("hash".to_string(), tx);
+        let context = Context::new(sender);
+
+        let (conn_tx, _conn_rx) = mpsc::channel(1);
+        let conn_sender = ConnSender::new(1, conn_tx);
+
+        let mut ctx = context.clone();
+        ctx.current_conn_id = Some(1);
+        ctx.set_conn_sender(conn_sender).await;
+
+        let mut ctx2 = context.clone();
+        ctx2.current_conn_id = Some(1);
+        let retrieved = ctx2.get_conn_sender().await;
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().get_conn_id(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_context_remove_conn_sender() {
+        let (tx, _rx) = mpsc::channel(1);
+        let sender = CommandSender::new("hash".to_string(), tx);
+        let context = Context::new(sender);
+
+        let (conn_tx, _conn_rx) = mpsc::channel(1);
+        let conn_sender = ConnSender::new(1, conn_tx);
+
+        let mut ctx = context.clone();
+        ctx.set_conn_sender(conn_sender).await;
+
+        ctx.current_conn_id = Some(1);
+        ctx.remove_conn_sender().await;
+
+        let mut ctx2 = context.clone();
+        ctx2.current_conn_id = Some(1);
+        let retrieved = ctx2.get_conn_sender().await;
+        assert!(retrieved.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_command_sender_get_hash() {
+        let (rx, _) = mpsc::channel::<CommandChannel>(1);
+        let sender = CommandSender::new("test_hash".to_string(), rx);
+
+        assert_eq!(sender.get_hash(), "test_hash");
+    }
+
+    #[tokio::test]
+    async fn test_id_adder_increments() {
+        let adder = IdAdder::default();
+
+        let id1 = adder.add_and_get().await;
+        let id2 = adder.add_and_get().await;
+        let id3 = adder.add_and_get().await;
+
+        assert_eq!(id1, 1);
+        assert_eq!(id2, 2);
+        assert_eq!(id3, 3);
+    }
+
+    #[tokio::test]
+    async fn test_conn_sender_send_bytes() {
+        let (tx, mut rx) = mpsc::channel(1);
+        let sender = ConnSender::new(1, tx);
+
+        let result = sender.send(Bytes::from("test data")).await;
+        assert!(result.is_ok());
+
+        let received = rx.recv().await;
+        assert!(received.is_some());
+        assert_eq!(received.unwrap(), Bytes::from("test data"));
+    }
+
+    #[tokio::test]
+    async fn test_conn_sender_get_conn_id() {
+        let (tx, _) = mpsc::channel(1);
+        let sender = ConnSender::new(42, tx);
+
+        assert_eq!(sender.get_conn_id(), 42);
+    }
+
+    #[tokio::test]
+    async fn test_context_get_conn_id_success() {
+        let (tx, _rx) = mpsc::channel(1);
+        let sender = CommandSender::new("hash".to_string(), tx);
+        let mut context = Context::new(sender);
+
+        context.current_conn_id = Some(42);
+
+        let result = context.get_conn_id();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[tokio::test]
+    async fn test_context_get_conn_id_failure() {
+        let (tx, _rx) = mpsc::channel(1);
+        let sender = CommandSender::new("hash".to_string(), tx);
+        let context = Context::new(sender);
+
+        let result = context.get_conn_id();
+        assert!(result.is_err());
+    }
+}

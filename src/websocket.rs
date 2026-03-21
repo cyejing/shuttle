@@ -27,7 +27,7 @@ use tokio::{
 };
 use tracing::{Instrument, debug, error, info, info_span, warn};
 
-use crate::{auth::AuthHandler, config::ServerConfig, setup::gen_traceid};
+use crate::{auth::AuthHandler, config::ServerConfig, setup::gen_conn_id};
 use axum_server::tls_rustls::RustlsConfig;
 
 #[derive(Clone)]
@@ -83,7 +83,7 @@ fn create_state(config: &ServerConfig) -> AppState {
 }
 
 async fn fly_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
-    let span = info_span!("connection", trace_id = %gen_traceid(), transport = "websocket");
+    let span = info_span!("connection", trace_id = %gen_conn_id(), transport = "websocket");
     ws.on_upgrade(|socket| fly(socket, state).instrument(span))
 }
 
@@ -112,7 +112,10 @@ async fn fly(mut stream: WebSocket, state: AppState) {
                         padding,
                     );
 
-                    match DirectDial::default().dial(addr.clone()).await {
+                    match DirectDial::new(Duration::from_secs(10))
+                        .dial(addr.clone())
+                        .await
+                    {
                         Ok(mut remote_ts) => {
                             timeout(Duration::from_secs(3), remote_ts.write_buf(&mut r))
                                 .await

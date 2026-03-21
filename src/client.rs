@@ -2,8 +2,9 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use borer_core::{
-    dial::{DirectDial, TrojanDial, WebSocketDial},
+    dial::{DirectDial, DirectTlsDial, DirectWsDial, SmartDial, TrojanDial, WebSocketDial},
     proxy::ProxyConnection,
+    proxy_list::ProxyList,
 };
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
@@ -12,7 +13,7 @@ use tracing::{Instrument, error, info, info_span};
 use crate::{
     config::{ClientConfig, ProxyMode},
     rathole,
-    setup::gen_traceid,
+    setup::gen_conn_id,
 };
 
 pub fn start_rathole(cc: ClientConfig) -> anyhow::Result<()> {
@@ -52,51 +53,76 @@ pub async fn start_proxy(cc: ClientConfig) -> anyhow::Result<()> {
             .await
             .with_context(|| format!("listen proxy addr {addr_str} failed"))?;
 
+        let proxy_list = Arc::new(ProxyList::new(&cc.proxy_list));
         let cc = Arc::new(cc);
 
         tokio::spawn(async move {
             while let Ok((ts, _)) = listener.accept().await {
                 let cc = cc.clone();
+                let proxy_list = proxy_list.clone();
                 let proxy_mode = proxy_mode.clone();
-                let span = info_span!("connection", trace_id = %gen_traceid(), mode = ?proxy_mode);
-                tokio::spawn(
-                    async move { proxy_handle(proxy_mode, cc, ts).instrument(span).await },
-                );
+                let span = info_span!("conn", id = %gen_conn_id());
+                tokio::spawn(async move {
+                    proxy_handle(proxy_mode, cc, ts, proxy_list)
+                        .instrument(span)
+                        .await
+                });
             }
         });
     }
     Ok(())
 }
 
-async fn proxy_handle(proxy_mode: ProxyMode, cc: Arc<ClientConfig>, ts: TcpStream) {
+async fn proxy_handle(
+    proxy_mode: ProxyMode,
+    cc: Arc<ClientConfig>,
+    ts: TcpStream,
+    proxy_list: Arc<ProxyList>,
+) {
+    let connect_timeout = cc.connect_timeout_duration();
+
     match proxy_mode {
         ProxyMode::Direct => {
-            ProxyConnection::new(ts, Box::<DirectDial>::default())
+            ProxyConnection::new(ts, Box::new(DirectDial::new(connect_timeout)))
                 .handle()
                 .await;
         }
 
         ProxyMode::Trojan => {
+            let direct = DirectTlsDial::new(connect_timeout, cc.insecure());
+            let proxy = TrojanDial::new(
+                cc.server.clone(),
+                cc.get_proxy_auth_hash(),
+                cc.insecure(),
+                true,
+                connect_timeout,
+            );
             ProxyConnection::<TlsStream<TcpStream>>::new(
                 ts,
-                Box::new(TrojanDial::new(
-                    cc.server.clone(),
-                    cc.get_proxy_auth_hash(),
-                    cc.insecure(),
-                    true,
+                Box::new(SmartDial::new(
+                    Box::new(direct),
+                    Box::new(proxy),
+                    proxy_list,
                 )),
             )
             .handle()
             .await;
         }
         ProxyMode::Websocket => {
+            let direct = DirectWsDial::new(connect_timeout, true);
+            let proxy = WebSocketDial::new(
+                cc.server.clone(),
+                cc.get_proxy_auth_hash(),
+                cc.insecure(),
+                true,
+                connect_timeout,
+            );
             ProxyConnection::new(
                 ts,
-                Box::new(WebSocketDial::new(
-                    cc.server.clone(),
-                    cc.get_proxy_auth_hash(),
-                    cc.insecure(),
-                    true,
+                Box::new(SmartDial::new(
+                    Box::new(direct),
+                    Box::new(proxy),
+                    proxy_list,
                 )),
             )
             .handle()

@@ -66,3 +66,52 @@ impl Debug for Exchange {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+
+    use super::*;
+
+    #[test]
+    fn test_exchange_new() {
+        let exchange = Exchange::new(42, Bytes::from("test data"));
+        assert_eq!(exchange.conn_id, 42);
+        assert_eq!(exchange.body, Bytes::from("test data"));
+    }
+
+    #[test]
+    fn test_exchange_command_name() {
+        assert_eq!(Exchange::COMMAND_NAME, "exchange");
+    }
+
+    #[test]
+    fn test_exchange_to_frame() {
+        let exchange = Exchange::new(42, Bytes::from("test data"));
+        let frame = exchange.to_frame().unwrap();
+
+        match frame {
+            Frame::Array(vec) => {
+                assert_eq!(vec.len(), 3);
+                assert!(vec[0] == "exchange");
+                match &vec[1] {
+                    Frame::Integer(val) => assert_eq!(*val, 42),
+                    _ => panic!("expected integer"),
+                }
+                match &vec[2] {
+                    Frame::Bulk(bytes) => assert_eq!(&bytes[..], b"test data"),
+                    _ => panic!("expected bulk"),
+                }
+            }
+            _ => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn test_exchange_debug() {
+        let exchange = Exchange::new(42, Bytes::from("test"));
+        let debug_str = format!("{:?}", exchange);
+        assert!(debug_str.contains("conn_id"));
+        assert!(debug_str.contains("body"));
+    }
+}

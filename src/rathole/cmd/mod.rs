@@ -90,4 +90,202 @@ pub trait CommandTo {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use bytes::Bytes;
+
+    use super::*;
+
+    #[test]
+    fn test_command_from_frame_dial() {
+        let frame = Frame::Array(vec![
+            Frame::Bulk(Bytes::from("dial")),
+            Frame::Integer(1),
+            Frame::Bulk(Bytes::from("127.0.0.1:8080")),
+            Frame::Integer(10),
+        ]);
+
+        let (req_id, cmd) = Command::from_frame(frame).unwrap();
+        assert_eq!(req_id, 10);
+        match cmd {
+            Command::Dial(_) => {}
+            _ => panic!("expected dial command"),
+        }
+    }
+
+    #[test]
+    fn test_command_from_frame_exchange() {
+        let frame = Frame::Array(vec![
+            Frame::Bulk(Bytes::from("exchange")),
+            Frame::Integer(42),
+            Frame::Bulk(Bytes::from("test data")),
+            Frame::Integer(5),
+        ]);
+
+        let (req_id, cmd) = Command::from_frame(frame).unwrap();
+        assert_eq!(req_id, 5);
+        match cmd {
+            Command::Exchange(_) => {}
+            _ => panic!("expected exchange command"),
+        }
+    }
+
+    #[test]
+    fn test_command_from_frame_ping() {
+        let frame = Frame::Array(vec![
+            Frame::Bulk(Bytes::from("ping")),
+            Frame::Bulk(Bytes::from("pong")),
+            Frame::Integer(1),
+        ]);
+
+        let (req_id, cmd) = Command::from_frame(frame).unwrap();
+        assert_eq!(req_id, 1);
+        match cmd {
+            Command::Ping(_) => {}
+            _ => panic!("expected ping command"),
+        }
+    }
+
+    #[test]
+    fn test_command_from_frame_hole() {
+        let frame = Frame::Array(vec![
+            Frame::Bulk(Bytes::from("hole")),
+            Frame::Bulk(Bytes::from("127.0.0.1:8080")),
+            Frame::Bulk(Bytes::from("127.0.0.1:9090")),
+            Frame::Integer(1),
+        ]);
+
+        let (req_id, cmd) = Command::from_frame(frame).unwrap();
+        assert_eq!(req_id, 1);
+        match cmd {
+            Command::Hole(_) => {}
+            _ => panic!("expected hole command"),
+        }
+    }
+
+    #[test]
+    fn test_command_from_frame_resp_ok() {
+        let frame = Frame::Array(vec![
+            Frame::Bulk(Bytes::from("resp")),
+            Frame::Simple("ok".to_string()),
+            Frame::Integer(1),
+        ]);
+
+        let (req_id, cmd) = Command::from_frame(frame).unwrap();
+        assert_eq!(req_id, 1);
+        match cmd {
+            Command::Resp(resp) => match resp {
+                Resp::Ok(msg) => assert_eq!(msg, "ok"),
+                _ => panic!("expected ok resp"),
+            },
+            _ => panic!("expected resp command"),
+        }
+    }
+
+    #[test]
+    fn test_command_from_frame_resp_err() {
+        let frame = Frame::Array(vec![
+            Frame::Bulk(Bytes::from("resp")),
+            Frame::Error("error message".to_string()),
+            Frame::Integer(1),
+        ]);
+
+        let (req_id, cmd) = Command::from_frame(frame).unwrap();
+        assert_eq!(req_id, 1);
+        match cmd {
+            Command::Resp(resp) => match resp {
+                Resp::Err(msg) => assert_eq!(msg, "error message"),
+                _ => panic!("expected error resp"),
+            },
+            _ => panic!("expected resp command"),
+        }
+    }
+
+    #[test]
+    fn test_command_from_frame_unknown() {
+        let frame = Frame::Array(vec![
+            Frame::Bulk(Bytes::from("unknown_command")),
+            Frame::Integer(0),
+        ]);
+
+        let (req_id, cmd) = Command::from_frame(frame).unwrap();
+        assert_eq!(req_id, 0);
+        match cmd {
+            Command::Unknown(_) => {}
+            _ => panic!("expected unknown command"),
+        }
+    }
+
+    #[test]
+    fn test_command_to_frame_dial() {
+        let dial = Dial::new(1, "127.0.0.1:8080".to_string());
+        let frame = Command::Dial(dial).to_frame(10).unwrap();
+
+        match frame {
+            Frame::Array(vec) => {
+                assert_eq!(vec.len(), 4);
+                assert!(vec[0] == "dial");
+                match &vec[3] {
+                    Frame::Integer(val) => assert_eq!(*val, 10),
+                    _ => panic!("expected integer"),
+                }
+            }
+            _ => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn test_command_to_frame_exchange() {
+        let exchange = Exchange::new(42, Bytes::from("data"));
+        let frame = Command::Exchange(exchange).to_frame(5).unwrap();
+
+        match frame {
+            Frame::Array(vec) => {
+                assert_eq!(vec.len(), 4);
+                assert!(vec[0] == "exchange");
+            }
+            _ => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn test_command_to_frame_ping() {
+        let ping = Ping::new(Some("test".to_string()));
+        let frame = Command::Ping(ping).to_frame(1).unwrap();
+
+        match frame {
+            Frame::Array(vec) => {
+                assert_eq!(vec.len(), 3);
+                assert!(vec[0] == "ping");
+            }
+            _ => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn test_command_to_frame_hole() {
+        let hole = Hole::new("127.0.0.1:8080".to_string(), "127.0.0.1:9090".to_string());
+        let frame = Command::Hole(hole).to_frame(1).unwrap();
+
+        match frame {
+            Frame::Array(vec) => {
+                assert_eq!(vec.len(), 4);
+                assert!(vec[0] == "hole");
+            }
+            _ => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn test_command_to_frame_resp() {
+        let resp = Resp::Ok("success".to_string());
+        let frame = Command::Resp(resp).to_frame(1).unwrap();
+
+        match frame {
+            Frame::Array(vec) => {
+                assert_eq!(vec.len(), 3);
+                assert!(vec[0] == "resp");
+            }
+            _ => panic!("expected array"),
+        }
+    }
+}

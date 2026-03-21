@@ -12,7 +12,7 @@ use tracing::{Instrument, debug, error, info, info_span};
 use crate::auth::AuthHandler;
 use crate::config::ServerConfig;
 use crate::rathole::dispatcher::Dispatcher;
-use crate::setup::gen_traceid;
+use crate::setup::gen_conn_id;
 use crate::store::ServerStore;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
@@ -35,7 +35,7 @@ pub async fn start_server(config: &ServerConfig) -> anyhow::Result<()> {
     tokio::spawn(async move {
         while let Ok((ts, _)) = listener.accept().await {
             let state = state.clone();
-            let span = info_span!("connection", trace_id = %gen_traceid());
+            let span = info_span!("connection", trace_id = %gen_conn_id());
             tokio::spawn(async move {
                 if let Err(e) = server_handle(ts, state).instrument(span).await {
                     error!(error = ?e, "server connection handling failed");
