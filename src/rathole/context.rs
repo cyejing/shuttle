@@ -1,10 +1,11 @@
 use crate::rathole::cmd::Command;
 use crate::rathole::{CommandChannel, ReqChannel};
-use anyhow::anyhow;
+use anyhow::{Context as _, anyhow};
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
+use tracing::{error, trace};
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -69,27 +70,23 @@ impl Context {
 
     pub(crate) async fn get_conn_sender(&self) -> Option<ConnSender> {
         trace!("Context get conn sender {:?}", self.current_conn_id);
-        match &self.current_conn_id {
-            Some(conn_id) => self.conn_map.lock().await.get(conn_id).cloned(),
-            None => panic!("context current conn id is empty"),
+        if let Some(conn_id) = self.current_conn_id {
+            self.conn_map.lock().await.get(&conn_id).cloned()
+        } else {
+            None
         }
     }
 
     pub(crate) async fn remove_conn_sender(&self) {
         trace!("Context remove conn sender {:?}", self.current_conn_id);
-        match &self.current_conn_id {
-            Some(conn_id) => {
-                let _discard = self.conn_map.lock().await.remove(conn_id);
-            }
-            None => panic!("context current conn id is empty"),
+        if let Some(conn_id) = self.current_conn_id {
+            let _discard = self.conn_map.lock().await.remove(&conn_id);
         }
     }
 
-    pub(crate) fn get_conn_id(&self) -> u64 {
-        match self.current_conn_id {
-            Some(conn_id) => conn_id,
-            None => panic!("context current conn id is empty"),
-        }
+    pub(crate) fn get_conn_id(&self) -> anyhow::Result<u64> {
+        self.current_conn_id
+            .context("context current conn id is empty")
     }
 }
 
@@ -169,8 +166,8 @@ impl CommandSender {
                 Ok(())
             }
             Err(e) => {
-                error!("send_sync {} resp err {}", req_id, e);
-                Err(anyhow!(format!("send_sync resp err {}", e)))
+                error!(req_id, error = %e, "send_sync response failed");
+                Err(anyhow!("send_sync resp err {e}"))
             }
         }
     }
@@ -196,6 +193,3 @@ impl IdAdder {
         *i
     }
 }
-
-#[cfg(test)]
-mod tests {}

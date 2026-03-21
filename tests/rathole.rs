@@ -14,7 +14,7 @@ mod common;
 
 #[tokio::test]
 async fn test_rathole_ping() {
-    setup_log(PathBuf::from("logs"));
+    let _ = setup_log(PathBuf::from("logs"));
     common::start_command_server().await;
     common::start_server("tests/examples/server.yaml").await;
     common::start_client("rathole", "tests/examples/client-rathole.yaml").await;
@@ -28,5 +28,5 @@ async fn test_rathole_ping() {
     command_write.write_command(10, ping).await.unwrap();
 
     let resp = command_read.read_command().await.unwrap();
-    assert_eq!(format!("{:?}", resp), "(10, Resp(Ok(\"hi\")))");
+    assert_eq!(format!("{resp:?}"), "(10, Resp(Ok(\"hi\")))");
 }

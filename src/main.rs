@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::Parser;
 use shuttle::{
     client::{start_proxy, start_rathole},
@@ -8,26 +9,29 @@ use shuttle::{
 };
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let args = ArgsConfig::parse();
 
     match args.mode {
         Mode::Server => {
             let config = config::load_server_config(args.config);
-            setup_log(config.logs.clone());
-            start_server(&config).await;
-            start_stats_server(&config);
+            setup_log(&config.logs).context("initialize logging failed")?;
+            start_server(&config).await?;
+            start_stats_server(&config)?;
             if let Some(ws) = &config.websocket {
-                start_websocket(&ws.listen, &config).await;
+                start_websocket(&ws.listen, &config).await?;
             }
         }
         Mode::Client => {
             let config = config::load_client_config(args.config);
-            setup_log(config.logs.clone());
-            start_rathole(config.clone()).await;
-            start_proxy(config).await;
+            setup_log(&config.logs).context("initialize logging failed")?;
+            start_rathole(config.clone())?;
+            start_proxy(config).await?;
         }
     }
 
-    tokio::signal::ctrl_c().await.expect("shut down");
+    tokio::signal::ctrl_c()
+        .await
+        .context("wait for shutdown signal")?;
+    Ok(())
 }

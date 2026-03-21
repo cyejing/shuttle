@@ -7,6 +7,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, Wr
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
+use tracing::{debug, info, trace};
 
 use crate::CRLF;
 use crate::config::HoleConfigItem;
@@ -30,14 +31,14 @@ pub async fn start_rathole(
     remote_addr: &str,
     hash: String,
     insecure: bool,
-    holes: &Vec<HoleConfigItem>,
+    holes: &[HoleConfigItem],
 ) -> anyhow::Result<()> {
     let stream = timeout(Duration::from_secs(10), TcpStream::connect(remote_addr))
         .await
         .context("Connect remote timeout")?
         .context(format!("Can't connect remote addr {}", remote_addr))?;
 
-    info!("Rathole connect remote {} success", remote_addr);
+    info!(remote_addr, "rathole connected");
     let domain = make_server_name(remote_addr)?;
     let tls_stream = timeout(
         Duration::from_secs(10),
@@ -52,7 +53,7 @@ pub async fn start_rathole(
 async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     mut stream: T,
     hash: String,
-    holes: &Vec<HoleConfigItem>,
+    holes: &[HoleConfigItem],
 ) -> anyhow::Result<()> {
     let mut buf: Vec<u8> = vec![];
     buf.extend_from_slice(hash.as_bytes());
@@ -95,10 +96,7 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         .await
         .context("Hole open proxy timeout")?
         .context("Hole open proxy failed")?;
-        info!(
-            "Hole open proxy for [remote:{}], [local:{}]",
-            hole.remote_addr, hole.local_addr
-        );
+        info!(remote_addr = %hole.remote_addr, local_addr = %hole.local_addr, "hole proxy opened");
     }
     rx.await.context("Dispatcher stop")?
 }
@@ -106,25 +104,20 @@ async fn handle<T: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 async fn exchange_copy(ts: TcpStream, mut rx: mpsc::Receiver<Bytes>, context: context::Context) {
     let (mut r, mut w) = io::split(ts);
     let mut shutdown = context.notify_shutdown.subscribe();
-    info!(
-        "start stream copy by exchange conn_id: {:?}",
-        context.current_conn_id
-    );
+    info!(conn_id = ?context.current_conn_id, "exchange stream copy started");
+
     tokio::select! {
         r1 = read_bytes(&mut r, context.clone()) => r1,
         r2 = write_bytes(&mut w, &mut rx) => r2,
         _ = shutdown.recv() =>{
-            debug!("exchange recv shutdown signal");
+            debug!("exchange received shutdown signal");
             Ok(())
         }
     }
-    .inspect_err(|e| debug!("exchange copy faield {e}"))
+    .inspect_err(|e| debug!(error = %e, "exchange copy failed"))
     .ok();
 
-    info!(
-        "stop stream copy by exchange conn_id: {:?}",
-        context.current_conn_id
-    );
+    info!(conn_id = ?context.current_conn_id, "exchange stream copy stopped");
 }
 
 async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: context::Context) -> anyhow::Result<()> {
@@ -135,10 +128,10 @@ async fn read_bytes(r: &mut ReadHalf<TcpStream>, context: context::Context) -> a
             .await
             .context("connection read byte err")?;
         if len > 0 {
-            let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), buf.freeze()));
+            let exchange = Command::Exchange(Exchange::new(context.get_conn_id()?, buf.freeze()));
             context.command_sender.send_sync(exchange).await?;
         } else {
-            let exchange = Command::Exchange(Exchange::new(context.get_conn_id(), Bytes::new()));
+            let exchange = Command::Exchange(Exchange::new(context.get_conn_id()?, Bytes::new()));
             context.command_sender.send_sync(exchange).await?;
             return Err(anyhow!("exchange local conn EOF"));
         }
@@ -154,11 +147,10 @@ async fn write_bytes(
             trace!("recv exchange copy byte and write_all");
             if bytes.is_empty() {
                 return Err(anyhow!("exchange remote conn close"));
-            } else {
-                w.write_all(&bytes)
-                    .await
-                    .context("connection write byte err")?;
             }
+            w.write_all(&bytes)
+                .await
+                .context("connection write byte err")?;
         } else {
             return Err(anyhow!("exchange receiver none"));
         }

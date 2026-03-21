@@ -310,6 +310,7 @@ impl Heartbeat {
                         return Err(anyhow!("can't recv heartbeat"))
                     }
                     self.beat_at = Instant::now();
+                    debug!("recv heartbeat at {:?}", self.beat_at);
                 },
                 _ = interval.tick() => {
                     let elapsed = self.beat_at.elapsed().as_secs();

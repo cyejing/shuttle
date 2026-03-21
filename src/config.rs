@@ -37,23 +37,24 @@ pub struct ClientConfig {
 }
 
 impl ClientConfig {
+    #[must_use]
     pub fn insecure(&self) -> bool {
-        self.tls.as_ref().map(|t| t.insecure).unwrap_or(true)
+        self.tls.as_ref().is_none_or(|t| t.insecure)
     }
+    #[must_use]
     pub fn get_proxy(&self) -> Option<(String, ProxyMode)> {
-        match self.proxy.clone() {
-            Some(p) => Some((p.listen, p.mode)),
-            None => None,
-        }
+        self.proxy
+            .as_ref()
+            .map(|proxy| (proxy.listen.clone(), proxy.mode.clone()))
     }
-    pub fn get_holes(&self) -> &Vec<HoleConfigItem> {
+    pub fn get_holes(&self) -> &[HoleConfigItem] {
         self.hole.as_ref().map(|h| &h.holes).expect("hole is None")
     }
     pub fn get_hole_auth_hash(&self) -> String {
         self.hole
             .as_ref()
             .and_then(|h| h.auth_hash.as_ref())
-            .map(|h| h.to_string())
+            .map(std::string::ToString::to_string)
             .unwrap()
     }
 
@@ -61,7 +62,7 @@ impl ClientConfig {
         self.proxy
             .as_ref()
             .and_then(|h| h.auth_hash.as_ref())
-            .map(|h| h.to_string())
+            .map(std::string::ToString::to_string)
             .unwrap()
     }
 
@@ -86,7 +87,7 @@ pub struct ProxyConfig {
     pub mode: ProxyMode,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProxyMode {
     #[serde(alias = "direct")]
     Direct,
@@ -125,7 +126,7 @@ impl ServerConfig {
         if let Some(mut rathole) = self.rathole.take() {
             let password_hash = rathole.passwords.iter().map(|p| sha224(p)).collect();
             rathole.password_hash = password_hash;
-            self.rathole = Some(rathole)
+            self.rathole = Some(rathole);
         }
     }
 }
@@ -225,7 +226,7 @@ const DEFAULT_CLIENT_CONFIG_PATH: [&str; 2] = ["client.yaml", "examples/client.y
 const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["server.yaml", "examples/server.yaml"];
 
 pub fn load_client_config(path: Option<PathBuf>) -> ClientConfig {
-    let file = open_config_file(path, Vec::from(DEFAULT_CLIENT_CONFIG_PATH));
+    let file = open_config_file(path, &DEFAULT_CLIENT_CONFIG_PATH);
     let mut cc: ClientConfig = serde_yaml::from_reader(file)
         .context("Can't serde read config file")
         .unwrap();
@@ -234,7 +235,7 @@ pub fn load_client_config(path: Option<PathBuf>) -> ClientConfig {
 }
 
 pub fn load_server_config(path: Option<PathBuf>) -> ServerConfig {
-    let file = open_config_file(path, Vec::from(DEFAULT_SERVER_CONFIG_PATH));
+    let file = open_config_file(path, &DEFAULT_SERVER_CONFIG_PATH);
     let mut sc: ServerConfig = serde_yaml::from_reader(file)
         .context("Can't serde read config file")
         .unwrap();
@@ -242,18 +243,16 @@ pub fn load_server_config(path: Option<PathBuf>) -> ServerConfig {
     sc
 }
 
-fn open_config_file(path: Option<PathBuf>, default_paths: Vec<&str>) -> File {
+fn open_config_file(path: Option<PathBuf>, default_paths: &[&str]) -> File {
     if let Some(pb) = path {
         let path_str = pb.to_str().unwrap();
         info!("load config file : {}", path_str);
-        File::open(pb.as_path())
-            .context(format!("load config file {path_str:?} failed"))
-            .unwrap()
+        File::open(pb.as_path()).unwrap()
     } else {
         let mut of: Option<File> = None;
-        for path in &default_paths {
+        for path in default_paths {
             if let Ok(file) = File::open(*path) {
-                info!("load config file : {}", *path);
+                info!("load config file: {}", *path);
                 of = Some(file);
                 break;
             }
@@ -275,4 +274,92 @@ fn default_logs() -> PathBuf {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn load_client_config_populates_defaults_and_hashes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("client.yaml");
+        fs::write(
+            &path,
+            r#"
+server: 127.0.0.1:4982
+proxy:
+  listen: 127.0.0.1:4082
+  auth: proxy-secret
+  mode: direct
+hole:
+  auth: hole-secret
+  holes:
+    - name: test
+      remote_addr: 127.0.0.1:6788
+      local_addr: 127.0.0.1:6789
+"#,
+        )
+        .unwrap();
+
+        let config = load_client_config(Some(path));
+
+        assert_eq!(config.logs, PathBuf::from("logs"));
+        assert!(config.insecure());
+        assert_eq!(
+            config.get_proxy(),
+            Some(("127.0.0.1:4082".to_string(), ProxyMode::Direct))
+        );
+        assert_eq!(config.get_proxy_auth_hash(), sha224("proxy-secret"));
+        assert_eq!(config.get_hole_auth_hash(), sha224("hole-secret"));
+        assert_eq!(config.get_holes().len(), 1);
+    }
+
+    #[test]
+    fn load_server_config_generates_rathole_hashes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("server.yaml");
+        fs::write(
+            &path,
+            r#"
+listen: 127.0.0.1:4982
+auth:
+  type: password
+  password: server-secret
+rathole:
+  passwords:
+    - hole-secret
+    - hole-secret-2
+"#,
+        )
+        .unwrap();
+
+        let config = load_server_config(Some(path));
+        let rathole = config.rathole.expect("rathole config should exist");
+
+        assert_eq!(config.logs, PathBuf::from("logs"));
+        assert_eq!(rathole.password_hash.len(), 2);
+        assert_eq!(rathole.password_hash[0], sha224("hole-secret"));
+        assert_eq!(rathole.password_hash[1], sha224("hole-secret-2"));
+    }
+
+    #[test]
+    fn client_insecure_defaults_to_tls_absent_or_enabled() {
+        let config = ClientConfig {
+            server: "127.0.0.1:4982".to_string(),
+            ..Default::default()
+        };
+        assert!(config.insecure());
+
+        let config = ClientConfig {
+            server: "127.0.0.1:4982".to_string(),
+            tls: Some(ClientTlsConfig {
+                insecure: false,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(!config.insecure());
+    }
+}

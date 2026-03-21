@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 #[tokio::test]
 async fn test_socks() {
-    setup_log(PathBuf::from("logs"));
+    let _ = setup_log(PathBuf::from("logs"));
 
     common::start_web_server().await;
     common::start_server("tests/examples/server.yaml").await;
@@ -26,5 +26,5 @@ async fn test_socks() {
         .await
         .unwrap();
     assert_eq!(resp, "Hello world!");
-    info!("assert eq {}", resp);
+    info!("assert eq {resp}");
 }

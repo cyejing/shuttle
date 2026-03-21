@@ -1,5 +1,6 @@
 use std::{io::Cursor, net::SocketAddr, sync::Arc, time::Duration};
 
+use anyhow::Context;
 use axum::{
     Router,
     extract::{
@@ -34,7 +35,7 @@ struct AppState {
     auth_handler: Arc<AuthHandler>,
 }
 
-pub async fn start_websocket(addr: &str, config: &ServerConfig) {
+pub async fn start_websocket(addr: &str, config: &ServerConfig) -> anyhow::Result<()> {
     let state = create_state(config);
     let router = Router::new()
         .route("/clients", get(websocket_handler))
@@ -46,32 +47,32 @@ pub async fn start_websocket(addr: &str, config: &ServerConfig) {
         Some(tls) => {
             let tc = RustlsConfig::from_pem_file(&tls.cert, &tls.key)
                 .await
-                .expect("load ssl file failed");
+                .context("load websocket tls files failed")?;
             Some(tc)
         }
         None => None,
     };
     let addr: SocketAddr = addr
         .parse()
-        .unwrap_or_else(|_| panic!("addr parse failed {addr}"));
+        .with_context(|| format!("parse websocket listen addr {addr} failed"))?;
 
     tokio::spawn(async move {
-        match tls_config {
-            Some(tc) => {
-                axum_server::bind_rustls(addr, tc)
-                    .serve(router.into_make_service())
-                    .await
-                    .unwrap_or_else(|_| panic!("Can't bind websocket port {addr}"));
-            }
-            None => {
-                axum_server::bind(addr)
-                    .serve(router.into_make_service())
-                    .await
-                    .unwrap_or_else(|_| panic!("Can't bind websocket port {addr}"));
-            }
+        let serve_result = match tls_config {
+            Some(tc) => axum_server::bind_rustls(addr, tc)
+                .serve(router.into_make_service())
+                .await
+                .map_err(anyhow::Error::from),
+            None => axum_server::bind(addr)
+                .serve(router.into_make_service())
+                .await
+                .map_err(anyhow::Error::from),
+        };
+        if let Err(error) = serve_result {
+            error!(listen_addr = %addr, error = ?error, "websocket server stopped");
         }
     });
-    info!("websocket up and running. listen: {addr}");
+    info!(listen_addr = %addr, "websocket up");
+    Ok(())
 }
 
 fn create_state(config: &ServerConfig) -> AppState {
@@ -82,7 +83,7 @@ fn create_state(config: &ServerConfig) -> AppState {
 }
 
 async fn fly_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
-    let span = info_span!("trace", id = gen_traceid());
+    let span = info_span!("connection", trace_id = %gen_traceid(), transport = "websocket");
     ws.on_upgrade(|socket| fly(socket, state).instrument(span))
 }
 
@@ -92,14 +93,14 @@ async fn fly(mut stream: WebSocket, state: AppState) {
         match trojan::Request::read_from(&mut r).await {
             Ok(req) => {
                 let addr = req.address.clone();
-                if let Some(user) = state.auth_handler.auth(&req.hash).await {
+                if let Some(user) = state.auth_handler.auth(&req.hash) {
                     let padding = req.is_padding();
                     if padding {
                         let buf = Padding::default().rand_buf();
                         let _ = stream.send(Message::Binary(Bytes::from(buf))).await;
                     }
 
-                    info!("[{padding}] Trojan Connect to {addr}. ",);
+                    info!(padding, target_addr = %addr, user = %user, "trojan websocket connect");
 
                     let ws = AxumWebSocketCopyStream::new(stream);
                     let mut stats_stream = StatsStream::new(
@@ -111,7 +112,7 @@ async fn fly(mut stream: WebSocket, state: AppState) {
                         padding,
                     );
 
-                    match DirectDial::default().dial(addr).await {
+                    match DirectDial::default().dial(addr.clone()).await {
                         Ok(mut remote_ts) => {
                             timeout(Duration::from_secs(3), remote_ts.write_buf(&mut r))
                                 .await
@@ -119,26 +120,20 @@ async fn fly(mut stream: WebSocket, state: AppState) {
                             if let Ok((a, b)) =
                                 copy_bidirectional(&mut stats_stream, &mut remote_ts).await
                             {
-                                debug!(
-                                    "trojan copy end for {} traffic: {}<=>{} total: {}",
-                                    req.address,
-                                    a,
-                                    b,
-                                    a + b
-                                );
+                                debug!(target_addr = %req.address, upstream_bytes = a, downstream_bytes = b, total_bytes = a + b, "trojan websocket copy completed");
                             }
                         }
                         Err(e) => {
-                            warn!("websocket dial remote failed. {e:?}");
+                            warn!(error = ?e, target_addr = %addr, "websocket dial remote failed");
                         }
                     }
                 } else {
-                    error!("trojan requested to {}. hash nomatch", addr);
+                    error!(target_addr = %addr, "trojan websocket auth failed");
                     let _ = stream.send(Message::Close(None)).await;
                 }
             }
             Err(e) => {
-                warn!("trojan request read failed. err: {}", e)
+                warn!(error = %e, "trojan websocket request read failed");
             }
         }
     }
@@ -185,11 +180,11 @@ async fn websocket(stream: WebSocket) {
                 }
             }
             Some(Err(e)) => {
-                debug!("websocket clients occured {e}");
+                debug!(error = %e, "websocket client stream error");
                 break;
             }
             None => {
-                debug!("websocket next is none");
+                debug!("websocket client stream closed");
                 break;
             }
             _ => {}

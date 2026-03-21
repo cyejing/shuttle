@@ -12,7 +12,7 @@ use tokio::net::TcpStream;
 
 #[tokio::test]
 async fn test_ping() {
-    setup_log(PathBuf::from("logs"));
+    let _ = setup_log(PathBuf::from("logs"));
     common::start_command_server().await;
     let stream = TcpStream::connect("127.0.0.1:6789").await.unwrap();
     let (r, w) = io::split(stream);
@@ -22,6 +22,6 @@ async fn test_ping() {
     command_write.write_command(10, ping).await.unwrap();
 
     let resp = command_read.read_command().await.unwrap();
-    info!("{:?}", resp);
-    assert_eq!(format!("{:?}", resp), "(10, Resp(Ok(\"hi\")))");
+    info!("{resp:?}");
+    assert_eq!(format!("{resp:?}"), "(10, Resp(Ok(\"hi\")))");
 }

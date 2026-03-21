@@ -1,12 +1,13 @@
 use std::{sync::Arc, time::Duration};
 
+use anyhow::Context;
 use borer_core::{
     dial::{DirectDial, TrojanDial, WebSocketDial},
     proxy::ProxyConnection,
 };
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::client::TlsStream;
-use tracing::{Instrument, info_span};
+use tracing::{Instrument, error, info, info_span};
 
 use crate::{
     config::{ClientConfig, ProxyMode},
@@ -14,9 +15,9 @@ use crate::{
     setup::gen_traceid,
 };
 
-pub async fn start_rathole(cc: ClientConfig) {
+pub fn start_rathole(cc: ClientConfig) -> anyhow::Result<()> {
     if cc.hole.is_some() {
-        info!("Run with rathole");
+        info!("run with rathole");
         let mut backoff = 400;
         tokio::spawn(async move {
             loop {
@@ -28,27 +29,28 @@ pub async fn start_rathole(cc: ClientConfig) {
                 )
                 .await
                 {
-                    Ok(_) => info!("Rathole status ok"),
-                    Err(e) => error!("Rathole occurs err :{:?}", e),
+                    Ok(()) => info!("rathole status ok"),
+                    Err(e) => error!(error = ?e, remote_addr = %cc.server, "rathole failed"),
                 }
                 if backoff > 3200 {
-                    backoff = 400
+                    backoff = 400;
                 }
-                info!("Retry after {} millis", backoff);
+                info!(backoff_millis = backoff, "retry scheduled");
                 tokio::time::sleep(Duration::from_millis(backoff)).await;
 
                 backoff *= 2;
             }
         });
     }
+    Ok(())
 }
 
-pub async fn start_proxy(cc: ClientConfig) {
+pub async fn start_proxy(cc: ClientConfig) -> anyhow::Result<()> {
     if let Some((addr_str, proxy_mode)) = cc.get_proxy() {
         info!("Run with proxy @{} use mode {:?}", addr_str, proxy_mode);
         let listener = TcpListener::bind(&addr_str)
             .await
-            .unwrap_or_else(|e| panic!("Can't Listen socks addr {}. err: {e}", addr_str));
+            .with_context(|| format!("listen proxy addr {addr_str} failed"))?;
 
         let cc = Arc::new(cc);
 
@@ -56,13 +58,14 @@ pub async fn start_proxy(cc: ClientConfig) {
             while let Ok((ts, _)) = listener.accept().await {
                 let cc = cc.clone();
                 let proxy_mode = proxy_mode.clone();
-                let span = info_span!("trace", id = gen_traceid());
+                let span = info_span!("connection", trace_id = %gen_traceid(), mode = ?proxy_mode);
                 tokio::spawn(
                     async move { proxy_handle(proxy_mode, cc, ts).instrument(span).await },
                 );
             }
         });
     }
+    Ok(())
 }
 
 async fn proxy_handle(proxy_mode: ProxyMode, cc: Arc<ClientConfig>, ts: TcpStream) {
@@ -99,5 +102,5 @@ async fn proxy_handle(proxy_mode: ProxyMode, cc: Arc<ClientConfig>, ts: TcpStrea
             .handle()
             .await;
         }
-    };
+    }
 }
