@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use bytes::Bytes;
+use tracing::{debug, error};
 
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
 use crate::rathole::context::Context;
@@ -49,10 +50,10 @@ impl CommandApply for Resp {
                 Resp::Err(msg) => s.send(Err(anyhow!(msg.to_string()))),
             };
             if sr.is_err() {
-                debug!("req {:?} channel close: {:?}", context.current_req_id, sr);
+                debug!(req_id = ?context.current_req_id, result = ?sr, "request channel closed");
             }
         } else {
-            error!("req {:?} is None", context.current_req_id);
+            error!(req_id = ?context.current_req_id, "request not found");
         };
         Ok(None)
     }

@@ -83,7 +83,7 @@ fn create_state(config: &ServerConfig) -> AppState {
 }
 
 async fn fly_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
-    let span = info_span!("connection", trace_id = %gen_conn_id(), transport = "websocket");
+    let span = info_span!("conn", id = %gen_conn_id(), transport = "websocket");
     ws.on_upgrade(|socket| fly(socket, state).instrument(span))
 }
 
@@ -127,7 +127,7 @@ async fn fly(mut stream: WebSocket, state: AppState) {
                             }
                         }
                         Err(e) => {
-                            warn!(error = ?e, target_addr = %addr, "websocket dial remote failed");
+                            warn!(error = %e, target_addr = %addr, "websocket dial remote failed");
                         }
                     }
                 } else {

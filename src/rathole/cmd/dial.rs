@@ -6,6 +6,7 @@ use crate::rathole::frame::{Frame, Parse};
 use bytes::Bytes;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tracing::error;
 
 #[derive(Debug)]
 pub struct Dial {
@@ -43,7 +44,7 @@ impl CommandApply for Dial {
     async fn apply(&self, context: Context) -> anyhow::Result<Option<Resp>> {
         let dial_conn = DialConn::new(self.conn_id, self.addr.clone());
         if let Err(err) = dial_conn.start(context).await {
-            error!("dial conn err : {:?}", err);
+            error!(error = %err, conn_id = self.conn_id, target_addr = %self.addr, "dial connection failed");
         }
         Ok(Some(Resp::Ok("ok".to_string())))
     }

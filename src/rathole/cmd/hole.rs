@@ -1,6 +1,7 @@
 use bytes::Bytes;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
+use tracing::{error, info};
 
 use crate::rathole::cmd::dial::Dial;
 use crate::rathole::cmd::resp::Resp;
@@ -54,7 +55,7 @@ impl CommandApply for Hole {
         match hole_server.start().await {
             Ok(_) => Ok(Some(Resp::Ok("ok".to_string()))),
             Err(e) => {
-                error!("proxy start err : {:?}", e);
+                error!(error = %e, remote_addr = %self.remote_addr, "hole proxy start failed");
                 Ok(Some(Resp::Err(format!("{}", e))))
             }
         }
@@ -86,7 +87,7 @@ impl HoleServer {
             tokio::select! {
                 r1 = self.run(listener) => {
                     if let Err(e) = r1 {
-                        error!("proxy run accept conn err: {}", e);
+                        error!(error = %e, listen_addr = %self.addr, "hole proxy accept connection failed");
                     }
                 },
                 _ = shutdown.recv() => info!("recv shutdown signal"),

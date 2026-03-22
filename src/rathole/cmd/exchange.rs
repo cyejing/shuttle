@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+use tracing::{debug, error};
+
 use crate::rathole::cmd::resp::Resp;
 use crate::rathole::cmd::{CommandApply, CommandParse, CommandTo};
 use crate::rathole::context::Context;
@@ -47,7 +49,7 @@ impl CommandApply for Exchange {
             Some(sender) => {
                 if let Err(e) = sender.send(bytes).await {
                     context.remove_conn_sender().await;
-                    error!("send bytes err : {}", e);
+                    error!(error = %e, conn_id, "exchange send bytes failed");
                 }
             }
             None => {
