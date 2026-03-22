@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use log::{error, info};
+use log::info;
 use shuttle::{
     client::{start_proxy, start_rathole},
     config::{self},
@@ -31,9 +31,7 @@ pub async fn start_command_server() {
                     let (mut dispatcher, _cs) = Dispatcher::new(stream, String::from("hash"));
 
                     tokio::spawn(async move {
-                        if let Err(e) = dispatcher.dispatch().await {
-                            error!("{e:?}");
-                        }
+                        dispatcher.dispatch().await.ok();
                     });
                 }
             });
