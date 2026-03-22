@@ -1,11 +1,11 @@
 [package]
 name = "shuttle"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 publish = false
 
 [dependencies]
-borer-core = { path = "../borer/borer-core", features=["websocket", "stats", "axum"] }
+borer-core = { version="0.5.0", features=["websocket", "stats", "axum"] }
 
 log = {version="0.4", features=["kv_unstable_serde"]}
 tracing="0.1"
@@ -37,9 +37,6 @@ chrono = { version = "0.4.26", features = ["serde"] }
 futures = "0.3.28"
 rust-embed = "8.2"
 mime_guess = "2.0"
-
-# [patch.crates-io]
-# borer-core = { path = "../borer-core" }
 
 [dev-dependencies]
 reqwest = { version = "0.11", default-features=false, features = ["socks","rustls-tls"] }
