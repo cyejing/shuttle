@@ -263,9 +263,9 @@ dependencies = [
 
 [[package]]
 name = "borer-core"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d426d485f7fa76167d7f8d008d9d8bdc8613d13d57d799b76efe0037d303796c"
+checksum = "fc5a0866b7240608ce34112b30782113c92ebc81f5a4ef8d204cda77053b569a"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1782,7 +1782,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "shuttle"
-version = "1.0.8"
+version = "1.0.9"
 dependencies = [
  "anyhow",
  "atoi",

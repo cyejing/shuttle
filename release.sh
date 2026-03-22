@@ -17,25 +17,16 @@ tag_name="v$new_version"
 echo "Shuttle Version: $current_version -> $new_version"
 echo "Tag: $tag_name"
 
-core_current_version=$(grep -E '^version = "' "$BORER_CORE_CARGO" | head -1 | sed 's/version = "\(.*\)"/\1/')
+core_version=$(grep -E '^version = "' "$BORER_CORE_CARGO" | head -1 | sed 's/version = "\(.*\)"/\1/')
 
-core_major=$(echo "$core_current_version" | cut -d. -f1)
-core_minor=$(echo "$core_current_version" | cut -d. -f2)
-core_patch=$(echo "$core_current_version" | cut -d. -f3)
-
-core_new_patch=$((core_patch + 1))
-core_new_version="${core_major}.${core_minor}.${core_new_patch}"
-
-echo "Borer-core Version: $core_current_version -> $core_new_version"
+echo "Borer-core Version: $core_version"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     sed -i '' "s/^version = \"$current_version\"/version = \"$new_version\"/" "$CARGO_FILE"
-    sed -i '' "s/^version = \"$core_current_version\"/version = \"$core_new_version\"/" "$BORER_CORE_CARGO"
-    sed -i '' "s/borer-core = { version=\"$core_current_version\"/borer-core = { version=\"$core_new_version\"/" "$CARGO_FILE"
+    sed -i '' "s/borer-core = { version=\"[^\"]*\"/borer-core = { version=\"$core_version\"/" "$CARGO_FILE"
 else
     sed -i "s/^version = \"$current_version\"/version = \"$new_version\"/" "$CARGO_FILE"
-    sed -i "s/^version = \"$core_current_version\"/version = \"$core_new_version\"/" "$BORER_CORE_CARGO"
-    sed -i "s/borer-core = { version=\"$core_current_version\"/borer-core = { version=\"$core_new_version\"/" "$CARGO_FILE"
+    sed -i "s/borer-core = { version=\"[^\"]*\"/borer-core = { version=\"$core_version\"/" "$CARGO_FILE"
 fi
 
 if grep -q '^\[patch\.crates-io\]' "$CARGO_FILE"; then

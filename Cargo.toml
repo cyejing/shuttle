@@ -1,11 +1,11 @@
 [package]
 name = "shuttle"
-version = "1.0.8"
+version = "1.0.9"
 edition = "2024"
 publish = false
 
 [dependencies]
-borer-core = { version="0.5.1", features=["websocket", "stats", "axum"] }
+borer-core = { version="0.5.2", features=["websocket", "stats", "axum"] }
 
 log = {version="0.4", features=["kv_unstable_serde"]}
 tracing="0.1"
