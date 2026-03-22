@@ -139,7 +139,7 @@ pub struct ServerConfig {
 }
 
 impl ServerConfig {
-    pub fn gen_rathole_hahs(&mut self) {
+    pub fn gen_rathole_hash(&mut self) {
         if let Some(mut rathole) = self.rathole.take() {
             let password_hash = rathole.passwords.iter().map(|p| sha224(p)).collect();
             rathole.password_hash = password_hash;
@@ -244,9 +244,7 @@ const DEFAULT_SERVER_CONFIG_PATH: [&str; 2] = ["server.yaml", "examples/server.y
 
 pub fn load_client_config(path: Option<PathBuf>) -> ClientConfig {
     let file = open_config_file(path, &DEFAULT_CLIENT_CONFIG_PATH);
-    let mut cc: ClientConfig = serde_yaml::from_reader(file)
-        .context("Can't serde read config file")
-        .unwrap();
+    let mut cc: ClientConfig = serde_yaml::from_reader(file).expect("Can't serde read config file");
     cc.gen_auth_hash();
     cc
 }
@@ -256,13 +254,15 @@ pub fn load_server_config(path: Option<PathBuf>) -> ServerConfig {
     let mut sc: ServerConfig = serde_yaml::from_reader(file)
         .context("Can't serde read config file")
         .unwrap();
-    sc.gen_rathole_hahs();
+    sc.gen_rathole_hash();
     sc
 }
 
 fn open_config_file(path: Option<PathBuf>, default_paths: &[&str]) -> File {
     if let Some(pb) = path {
-        let path_str = pb.to_str().unwrap();
+        let path_str = pb
+            .to_str()
+            .unwrap_or_else(|| panic!("load config file {:?} failed", pb));
         info!("load config file : {}", path_str);
         File::open(pb.as_path()).unwrap()
     } else {
@@ -275,10 +275,7 @@ fn open_config_file(path: Option<PathBuf>, default_paths: &[&str]) -> File {
             }
         }
 
-        of.context(format!(
-            "load default config file [{default_paths:?}] failed",
-        ))
-        .unwrap()
+        of.unwrap_or_else(|| panic!("load default config file [{default_paths:?}] failed",))
     }
 }
 

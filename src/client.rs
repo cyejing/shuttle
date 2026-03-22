@@ -2,12 +2,11 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use borer_core::{
-    dial::{DirectDial, DirectTlsDial, DirectWsDial, SmartDial, TrojanDial, WebSocketDial},
+    dial::{DirectDial, SmartDial, TrojanDial, WebSocketDial},
     proxy::ProxyConnection,
     proxy_list::ProxyList,
 };
 use tokio::net::{TcpListener, TcpStream};
-use tokio_rustls::client::TlsStream;
 use tracing::{Instrument, error, info, info_span};
 
 use crate::{
@@ -89,7 +88,7 @@ async fn proxy_handle(
         }
 
         ProxyMode::Trojan => {
-            let direct = DirectTlsDial::new(connect_timeout, cc.insecure());
+            let direct = DirectDial::new(connect_timeout);
             let proxy = TrojanDial::new(
                 cc.server.clone(),
                 cc.get_proxy_auth_hash(),
@@ -97,19 +96,20 @@ async fn proxy_handle(
                 true,
                 connect_timeout,
             );
-            ProxyConnection::<TlsStream<TcpStream>>::new(
+            ProxyConnection::new(
                 ts,
                 Box::new(SmartDial::new(
                     Box::new(direct),
                     Box::new(proxy),
                     proxy_list,
+                    connect_timeout,
                 )),
             )
             .handle()
             .await;
         }
         ProxyMode::Websocket => {
-            let direct = DirectWsDial::new(connect_timeout, true);
+            let direct = DirectDial::new(connect_timeout);
             let proxy = WebSocketDial::new(
                 cc.server.clone(),
                 cc.get_proxy_auth_hash(),
@@ -123,6 +123,7 @@ async fn proxy_handle(
                     Box::new(direct),
                     Box::new(proxy),
                     proxy_list,
+                    connect_timeout,
                 )),
             )
             .handle()
