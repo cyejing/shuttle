@@ -2,9 +2,9 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use borer_core::{
+    DirectList, ProxyList,
     dial::{DirectDial, SmartDial, TrojanDial, WebSocketDial},
     proxy::ProxyConnection,
-    proxy_list::ProxyList,
 };
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{Instrument, error, info, info_span};
@@ -53,16 +53,18 @@ pub async fn start_proxy(cc: ClientConfig) -> anyhow::Result<()> {
             .with_context(|| format!("listen proxy addr {addr_str} failed"))?;
 
         let proxy_list = Arc::new(ProxyList::new(&cc.proxy_list));
+        let direct_list = Arc::new(DirectList::new(&cc.direct_list));
         let cc = Arc::new(cc);
 
         tokio::spawn(async move {
             while let Ok((ts, _)) = listener.accept().await {
                 let cc = cc.clone();
                 let proxy_list = proxy_list.clone();
+                let direct_list = direct_list.clone();
                 let proxy_mode = proxy_mode.clone();
                 let span = info_span!("conn", id = %gen_conn_id());
                 tokio::spawn(async move {
-                    proxy_handle(proxy_mode, cc, ts, proxy_list)
+                    proxy_handle(proxy_mode, cc, ts, proxy_list, direct_list)
                         .instrument(span)
                         .await
                 });
@@ -77,6 +79,7 @@ async fn proxy_handle(
     cc: Arc<ClientConfig>,
     ts: TcpStream,
     proxy_list: Arc<ProxyList>,
+    direct_list: Arc<DirectList>,
 ) {
     let connect_timeout = cc.connect_timeout_duration();
 
@@ -102,6 +105,7 @@ async fn proxy_handle(
                     Box::new(direct),
                     Box::new(proxy),
                     proxy_list,
+                    direct_list,
                     connect_timeout,
                 )),
             )
@@ -123,6 +127,7 @@ async fn proxy_handle(
                     Box::new(direct),
                     Box::new(proxy),
                     proxy_list,
+                    direct_list,
                     connect_timeout,
                 )),
             )

@@ -81,7 +81,24 @@ proxy:
   listen: 0.0.0.0:1082
   auth: your_password
   mode: trojan
+
+# 连接配置（可选）
+connect_timeout: 3        # 连接超时时间（秒），默认 3
+proxy_list: "proxy.txt"   # 代理地址列表文件，记录需要走代理的地址
+direct_list: "direct.txt" # 直连地址列表文件，记录可直接访问的地址
 ```
+
+#### 配置参数说明
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| connect_timeout | u64 | 3 | 连接超时时间（秒） |
+| proxy_list | PathBuf | proxy.txt | 代理地址列表文件路径，记录需要走代理的地址 |
+| direct_list | PathBuf | direct.txt | 直连地址列表文件路径，记录可直接访问的地址 |
+
+**proxy_list**: 当地址在此列表中时，SmartDial 会直接使用代理连接，不进行竞速。
+
+**direct_list**: 当地址在此列表中时，SmartDial 会直接使用直连，不进行竞速。直连成功后地址会自动添加到此列表。
 
 #### 使用
 

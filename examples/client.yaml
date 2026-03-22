@@ -6,10 +6,14 @@ proxy:
   auth: your_password
   mode: trojan # 通信协议
 
+# 连接配置（可选）
+connect_timeout: 3        # 连接超时时间（秒），默认 3
+proxy_list: "proxy.txt"   # 代理地址列表文件，记录需要走代理的地址
+direct_list: "direct.txt" # 直连地址列表文件，记录可直接访问的地址
+
 hole: # 可选 开启内网穿透功能
   auth: your_password_hole
   holes:
     - name: ssh
       remote_addr: 127.0.0.1:4022 # 开启服务器端口
       local_addr: 127.0.0.1:22 # 穿透本地端口
-

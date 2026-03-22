@@ -4,6 +4,9 @@ version = "1.0.3"
 edition = "2024"
 publish = false
 
+[patch.crates-io]
+borer-core = { path = "../borer-core" }
+
 [dependencies]
 borer-core = { version="0.5.0", features=["websocket", "stats", "axum"] }
 

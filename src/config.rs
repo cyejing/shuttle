@@ -39,6 +39,8 @@ pub struct ClientConfig {
     pub connect_timeout: u64,
     #[serde(default = "default_proxy_list")]
     pub proxy_list: PathBuf,
+    #[serde(default = "default_direct_list")]
+    pub direct_list: PathBuf,
 }
 
 fn default_connect_timeout() -> u64 {
@@ -47,6 +49,10 @@ fn default_connect_timeout() -> u64 {
 
 fn default_proxy_list() -> PathBuf {
     PathBuf::from("proxy.txt")
+}
+
+fn default_direct_list() -> PathBuf {
+    PathBuf::from("direct.txt")
 }
 
 impl ClientConfig {

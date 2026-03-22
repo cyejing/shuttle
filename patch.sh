@@ -11,7 +11,7 @@ fi
 awk '
 /^\[dependencies\]/ {
     print "[patch.crates-io]"
-    print "borer-core = { path = \"../borer/borer-core\" }"
+    print "borer-core = { path = \"../borer-core\" }"
     print ""
 }
 { print }
