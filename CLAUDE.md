@@ -1,4 +1,4 @@
-# Shuttle 项目 Agent 指南
+# Shuttle
 
 ## 项目概述
 
@@ -11,15 +11,17 @@ Shuttle 是一个用 Rust 编写的网络代理和内网穿透工具，主要功
 
 ## 技术栈
 
-- **语言**: Rust (Edition 2024)
+- **语言**: Rust 1.86.0 (Edition 2024)
 - **异步运行时**: Tokio
-- **网络框架**: 
-  - `borer-core` (核心网络库，位于 `../borer/borer-core`)
+- **网络框架**:
+  - `borer-core` (核心网络库，位于同级目录 `../borer-core`，当前依赖版本 0.5.6)
   - `axum` (WebSocket 和 HTTP 服务)
   - `tokio-rustls` (TLS 支持)
 - **序列化**: serde, serde_yaml, serde_json
 - **日志**: tracing, log
 - **CLI**: clap
+
+> 注：依赖的核心库 `borer-core` 及同族的 `borer-cli`、`borer-st`、`borer-board` 均位于本项目同级目录 `../` 下，本地联调时可直接修改这些库源码。
 
 ## 项目结构
 
@@ -144,7 +146,7 @@ shuttle/
 
 ### WebSocket 支持 (`websocket.rs`)
 
-提供两种 WebSocket 端点：
+提供三种 WebSocket 端点：
 - `/fly`: Trojan over WebSocket
 - `/clients`: 流量统计 WebSocket 推送
 - `/stat`: 统计页面
@@ -164,22 +166,12 @@ cargo build --release
 ./shuttle client -c examples/client.yaml
 ```
 
-### 测试
+### 检查与测试
 
-```bash
-# 运行所有测试
-cargo test
-
-# 运行特定测试
-cargo test --test rathole
-```
-
-### 检查
-
-- 检查：`make check`
+- 检查：`make check`（cargo check + fmt --check + clippy -D warnings）
 - 全量特性检查：`make check-all`
-- 测试：`cargo test --all`
-- 静态分析：`cargo clippy --all-features -- -D warnings`
+- 测试：`cargo test --all` 或 `make test`
+- 自动修复：`make fix`
 
 ### 代码风格
 
@@ -209,7 +201,7 @@ cargo test --test rathole
 
 ### 外部依赖
 
-- `borer-core`: 核心网络库，提供：
+- `borer-core`: 核心网络库（位于 `../borer-core`），提供：
   - Trojan 协议实现
   - TLS 连接处理
   - 代理连接抽象
@@ -255,13 +247,6 @@ main.rs
 - 日志目录默认为 `logs/`
 - 可在配置文件中通过 `logs` 字段指定
 
-## 性能考虑
-
-- 使用 Tokio 异步运行时，支持高并发
-- 连接处理使用 spawn 独立任务
-- Rathole 使用指数退避重连机制
-- 流量统计使用内存存储
-
 ## 安全注意事项
 
 - 所有密码使用 SHA224 哈希
@@ -269,15 +254,8 @@ main.rs
 - 支持伪装流量以避免检测
 - 认证失败会记录日志
 
-## 扩展点
-
-1. **协议扩展**: 可通过扩展 `rathole/cmd/` 添加新命令
-2. **认证扩展**: `AuthHandler` 支持多种认证方式
-3. **伪装扩展**: `MasqueradeConfig` 支持多种伪装方式
-4. **统计扩展**: 可通过 `traffic_stats` 配置启用统计服务
-
 ## 相关资源
 
 - [GitHub 仓库](https://github.com/cyejing/shuttle)
 - [Release 下载](https://github.com/cyejing/shuttle/releases)
-- [borer-core 库](../borer/borer-core)
+- [borer-core 库](../borer-core)
